@@ -1142,4 +1142,40 @@
   .hamburger:hover span {
     background: var(--accent);
   }
+
+  /* 1. Banner de bienvenida */
+  .welcome-strip {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 18px 20px;
+    gap: 10px;
+  }
+  .welcome-animals {
+    width: 100%;
+    text-align: center;
+  }
+  .welcome-strip::before {
+    display: none;
+  }
+
+  /* 2. Tarjetas de estadísticas → 2 columnas */
+  .stats-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* 3. Columnas de tareas → apiladas */
+  .tasks-columns {
+    grid-template-columns: 1fr;
+  }
+
+  /* 4. Calendario → ancho completo */
+  .calendar-layout {
+    grid-template-columns: 1fr;
+  }
+  .cal-wrap,
+  .day-panel {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
 }

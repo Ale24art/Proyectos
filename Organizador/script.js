@@ -1041,3 +1041,9 @@ document.getElementById('menu-toggle').addEventListener('click', () => {
 document.getElementById('sidebar-overlay').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.remove('sidebar-active');
 });
+
+document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelector('.sidebar').classList.remove('sidebar-active');
+  });
+});
