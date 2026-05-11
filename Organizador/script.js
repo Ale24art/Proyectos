@@ -1032,3 +1032,12 @@ document.getElementById('college-modal').addEventListener('click', function(e){ 
 // INIT
 renderDashboard();
 renderCalendar();
+
+// ── MENÚ HAMBURGUESA (móvil) ──
+document.getElementById('menu-toggle').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.toggle('sidebar-active');
+});
+
+document.getElementById('sidebar-overlay').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.remove('sidebar-active');
+});

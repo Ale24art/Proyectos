@@ -1072,19 +1072,74 @@
   #trash-visits-section { }
   #trash-evals-section { }
 
+/* ── HAMBURGER (oculto en escritorio) ── */
+.hamburger {
+  display: none;
+}
+
+/* ── SIDEBAR OVERLAY ── */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 15;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
 /* ══ RESPONSIVE — MÓVIL ══ */
 @media (max-width: 768px) {
   .sidebar {
-    display: none;
+    display: flex;
+    left: -100%;
+    transition: left 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    z-index: 20;
+  }
+  .sidebar.sidebar-active {
+    left: 0;
+  }
+  .sidebar.sidebar-active ~ #sidebar-overlay {
+    display: block;
+    opacity: 1;
   }
 
   .main {
     margin-left: 0;
     width: 100%;
     padding: 20px 16px;
+    padding-top: 64px;
   }
 
   .notes-grid {
     columns: 1;
+  }
+
+  .hamburger {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 30;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .hamburger span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+    transition: background 0.2s;
+  }
+  .hamburger:hover span {
+    background: var(--accent);
   }
 }
