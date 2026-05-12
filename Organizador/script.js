@@ -1,16 +1,20 @@
-﻿// ══ DATOS (localStorage) ══
-let tasks     = JSON.parse(localStorage.getItem('flow_tasks')     || '[]');
-let notes     = JSON.parse(localStorage.getItem('flow_notes')     || '[]');
-let reminders = JSON.parse(localStorage.getItem('flow_reminders') || '{}');
-let trash     = JSON.parse(localStorage.getItem('flow_trash')     || '{"tasks":[],"notes":[]}');
+import { db } from './firebase-config.js';
+import { ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-let editingTaskId = null;
-let editingStatus = 'pendiente';
-let editingNoteId = null;
+// ══ ESTADO LOCAL ══
+let tasks     = [];
+let notes     = [];
+let reminders = {};
+let trash     = { tasks:[], notes:[], colleges:[], teachers:[], visits:[], evals:[], todos:[], reminders:[] };
+let colleges  = [];
+
+let editingTaskId     = null;
+let editingStatus     = 'pendiente';
+let editingNoteId     = null;
 let selectedNoteColor = 0;
-let calDate = new Date();
-let selectedCalDay = null;
-let dragSrcId = null;
+let calDate           = new Date();
+let selectedCalDay    = null;
+let dragSrcId         = null;
 
 const NOTE_COLORS = [
   '#FFFEF5','#EBF5EC','#E8F0FB','#FDEEED','#F2EFFE','#FEF9E7',
@@ -18,12 +22,89 @@ const NOTE_COLORS = [
   '#EFFBEF','#EEF4FF','#FDF0FA','#FDFCE8'
 ];
 
-function save() {
-  localStorage.setItem('flow_tasks',     JSON.stringify(tasks));
-  localStorage.setItem('flow_notes',     JSON.stringify(notes));
-  localStorage.setItem('flow_reminders', JSON.stringify(reminders));
-  localStorage.setItem('flow_trash',     JSON.stringify(trash));
-  localStorage.setItem('flow_colleges',   JSON.stringify(colleges));
+// ══ FIREBASE HELPERS ══
+function toArray(v) {
+  if (!v) return [];
+  return Array.isArray(v) ? v : Object.values(v);
+}
+function fbSetTask(id, data)    { set(ref(db, 'tasks/'    + id), data); }
+function fbRemoveTask(id)       { remove(ref(db, 'tasks/' + id)); }
+function fbSetNote(id, data)    { set(ref(db, 'notes/'    + id), data); }
+function fbRemoveNote(id)       { remove(ref(db, 'notes/' + id)); }
+function fbSetCollege(id, data) { set(ref(db, 'colleges/' + id), data); }
+function fbRemoveCollege(id)    { remove(ref(db, 'colleges/' + id)); }
+function fbSaveReminders()      { set(ref(db, 'reminders'), reminders); }
+function fbSaveTrash()          { set(ref(db, 'trash'), trash); }
+
+function saveColleges() {
+  const obj = {};
+  colleges.forEach(c => { obj[c.id] = c; });
+  set(ref(db, 'colleges'), obj);
+}
+
+// ══ LISTENERS EN TIEMPO REAL ══
+onValue(ref(db, 'tasks'), snap => {
+  tasks = snap.val() ? Object.values(snap.val()) : [];
+  renderTasks(); renderDashboard(); renderCalendar();
+});
+
+onValue(ref(db, 'notes'), snap => {
+  notes = snap.val()
+    ? Object.values(snap.val()).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    : [];
+  renderNotes();
+});
+
+onValue(ref(db, 'reminders'), snap => {
+  reminders = snap.val() || {};
+  renderCalendar();
+  if (selectedCalDay) renderDayReminders(selectedCalDay);
+});
+
+onValue(ref(db, 'trash'), snap => {
+  const v = snap.val() || {};
+  trash = {
+    tasks:     toArray(v.tasks),
+    notes:     toArray(v.notes),
+    colleges:  toArray(v.colleges),
+    teachers:  toArray(v.teachers),
+    visits:    toArray(v.visits),
+    evals:     toArray(v.evals),
+    todos:     toArray(v.todos),
+    reminders: toArray(v.reminders),
+  };
+  updateTrashBadge();
+  renderTrash();
+});
+
+onValue(ref(db, 'colleges'), snap => {
+  const v = snap.val();
+  colleges = v ? Object.values(v).map(c => ({
+    ...c,
+    teachers:    toArray(c.teachers),
+    visits:      toArray(c.visits),
+    evaluations: toArray(c.evaluations),
+    todos:       toArray(c.todos),
+  })) : [];
+  renderColleges();
+  if (currentCollegeId) {
+    renderTeachers(); renderVisits(); renderEvals(); renderCollegeTodos();
+  }
+});
+
+// ══ UTILIDADES ══
+function updateTrashBadge() {
+  const total = (trash.tasks||[]).length + (trash.notes||[]).length +
+    (trash.colleges||[]).length + (trash.teachers||[]).length +
+    (trash.visits||[]).length + (trash.evals||[]).length + (trash.todos||[]).length +
+    (trash.reminders||[]).length;
+  const badge = document.getElementById('trash-count-badge');
+  if (badge) { badge.textContent = total; badge.style.display = total ? '' : 'none'; }
+}
+
+function sendToTrash(type, item) {
+  if (!trash[type]) trash[type] = [];
+  trash[type].unshift({ ...item, deletedAt: new Date().toISOString() });
 }
 
 function esc(s) {
@@ -110,11 +191,13 @@ function toggleFormExtra() {
     document.getElementById('task-desc').focus();
   }
 }
+
 function addTask() {
   const title = document.getElementById('task-title').value.trim();
   if (!title) { alert('Escribe un título para la tarea'); return; }
-  tasks.push({
-    id: Date.now(),
+  const id = Date.now();
+  fbSetTask(id, {
+    id,
     title,
     desc:     document.getElementById('task-desc').value.trim(),
     status:   document.getElementById('task-status').value,
@@ -123,7 +206,7 @@ function addTask() {
     tag:      document.getElementById('task-tag').value.trim(),
     created:  new Date().toISOString()
   });
-  save(); clearTaskForm(); renderTasks(); renderDashboard();
+  clearTaskForm();
 }
 
 function clearTaskForm() {
@@ -189,21 +272,25 @@ function saveEditTask() {
   const t = tasks.find(t=>t.id===editingTaskId);
   const title = document.getElementById('edit-title').value.trim();
   if (!title) { alert('El título no puede estar vacío'); return; }
-  t.title    = title;
-  t.desc     = document.getElementById('edit-desc').value.trim();
-  t.status   = editingStatus;
-  t.priority = document.getElementById('edit-priority').value;
-  t.date     = document.getElementById('edit-date').value;
-  t.tag      = document.getElementById('edit-tag').value.trim();
-  save(); closeTaskModal(); renderTasks(); renderDashboard();
+  fbSetTask(editingTaskId, {
+    ...t,
+    title,
+    desc:     document.getElementById('edit-desc').value.trim(),
+    status:   editingStatus,
+    priority: document.getElementById('edit-priority').value,
+    date:     document.getElementById('edit-date').value,
+    tag:      document.getElementById('edit-tag').value.trim(),
+  });
+  closeTaskModal();
 }
 
 function deleteEditingTask() {
   const t = tasks.find(t=>t.id===editingTaskId);
   if (!t) return;
-  trash.tasks.unshift({ ...t, deletedAt: new Date().toISOString() });
-  tasks = tasks.filter(t=>t.id!==editingTaskId);
-  save(); closeTaskModal(); renderTasks(); renderDashboard();
+  sendToTrash('tasks', t);
+  fbRemoveTask(editingTaskId);
+  fbSaveTrash();
+  closeTaskModal();
 }
 
 function closeTaskModal() {
@@ -212,7 +299,7 @@ function closeTaskModal() {
 }
 
 // ══ CALENDARIO ══
-const MNAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MNAMES    = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MNAMES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 function renderCalendar() {
@@ -310,7 +397,7 @@ function addReminder() {
   if (!text||!selectedCalDay) return;
   if (!reminders[selectedCalDay]) reminders[selectedCalDay]=[];
   reminders[selectedCalDay].push({text, time:document.getElementById('r-time').value});
-  save();
+  fbSaveReminders();
   document.getElementById('r-text').value='';
   document.getElementById('r-time').value='';
   document.getElementById('reminder-form').style.display='none';
@@ -319,9 +406,13 @@ function addReminder() {
 }
 
 function deleteReminder(dateStr,idx) {
+  sendToTrash('reminders', { ...reminders[dateStr][idx], date: dateStr });
   reminders[dateStr].splice(idx,1);
   if (!reminders[dateStr].length) delete reminders[dateStr];
-  save(); renderDayReminders(dateStr); renderCalendar();
+  fbSaveReminders();
+  fbSaveTrash();
+  renderDayReminders(dateStr);
+  renderCalendar();
 }
 
 // ══ NOTAS ══
@@ -368,8 +459,7 @@ function renderNotes() {
 function togglePin(id) {
   const n = notes.find(n => n.id === id);
   if (!n) return;
-  n.pinned = !n.pinned;
-  save(); renderNotes();
+  fbSetNote(id, { ...n, pinned: !n.pinned });
 }
 
 // ── Drag & drop ──
@@ -391,12 +481,13 @@ function onDrop(e, targetId) {
   const srcIdx = notes.findIndex(n => n.id === dragSrcId);
   const tgtIdx = notes.findIndex(n => n.id === targetId);
   if (srcIdx < 0 || tgtIdx < 0) return;
-  const srcPinned = notes[srcIdx].pinned;
-  const tgtPinned = notes[tgtIdx].pinned;
-  if (srcPinned !== tgtPinned) return;
+  if (notes[srcIdx].pinned !== notes[tgtIdx].pinned) return;
   const [moved] = notes.splice(srcIdx, 1);
   notes.splice(tgtIdx, 0, moved);
-  save(); renderNotes();
+  const obj = {};
+  notes.forEach((n, i) => { obj[n.id] = { ...n, sortOrder: i }; });
+  set(ref(db, 'notes'), obj);
+  renderNotes();
 }
 function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); dragSrcId = null; }
 
@@ -431,19 +522,21 @@ function saveNote() {
   if (!title&&!body) { alert('Escribe algo en la nota'); return; }
   if (editingNoteId) {
     const n=notes.find(n=>n.id===editingNoteId);
-    n.title=title; n.body=body; n.color=selectedNoteColor;
+    fbSetNote(editingNoteId, { ...n, title, body, color: selectedNoteColor });
   } else {
-    notes.unshift({id:Date.now(),title,body,color:selectedNoteColor,pinned:false,created:new Date().toISOString()});
+    const id = Date.now();
+    const sortOrder = notes.length ? Math.max(...notes.map(n => n.sortOrder || 0)) + 1 : 0;
+    fbSetNote(id, { id, title, body, color: selectedNoteColor, pinned: false, created: new Date().toISOString(), sortOrder });
   }
-  save(); closeNoteModal(); renderNotes();
+  closeNoteModal();
 }
 
 function deleteNote(id) {
   const n = notes.find(n=>n.id===id);
   if (!n) return;
-  trash.notes.unshift({ ...n, deletedAt: new Date().toISOString() });
-  notes = notes.filter(n=>n.id!==id);
-  save(); renderNotes();
+  sendToTrash('notes', n);
+  fbRemoveNote(id);
+  fbSaveTrash();
 }
 
 function deleteNoteFromModal() {
@@ -472,23 +565,29 @@ function renderTrash() {
   const tTeachers = trash.teachers || [];
   const tVisits   = trash.visits   || [];
   const tEvals    = trash.evals    || [];
-  const total = tTasks.length + tNotes.length + tColleges.length + tTeachers.length + tVisits.length + tEvals.length;
+  const tTodos      = trash.todos      || [];
+  const tReminders  = trash.reminders  || [];
+  const total = tTasks.length + tNotes.length + tColleges.length + tTeachers.length + tVisits.length + tEvals.length + tTodos.length + tReminders.length;
 
   document.getElementById('btn-empty-all').style.display = total ? '' : 'none';
   document.getElementById('trash-empty-state').style.display = total ? 'none' : '';
-  document.getElementById('trash-tasks-section').style.display    = tTasks.length    ? '' : 'none';
-  document.getElementById('trash-notes-section').style.display    = tNotes.length    ? '' : 'none';
-  document.getElementById('trash-colleges-section').style.display = tColleges.length ? '' : 'none';
-  document.getElementById('trash-teachers-section').style.display = tTeachers.length ? '' : 'none';
-  document.getElementById('trash-visits-section').style.display   = tVisits.length   ? '' : 'none';
-  document.getElementById('trash-evals-section').style.display    = tEvals.length    ? '' : 'none';
+  document.getElementById('trash-tasks-section').style.display      = tTasks.length      ? '' : 'none';
+  document.getElementById('trash-notes-section').style.display      = tNotes.length      ? '' : 'none';
+  document.getElementById('trash-colleges-section').style.display   = tColleges.length   ? '' : 'none';
+  document.getElementById('trash-teachers-section').style.display   = tTeachers.length   ? '' : 'none';
+  document.getElementById('trash-visits-section').style.display     = tVisits.length     ? '' : 'none';
+  document.getElementById('trash-evals-section').style.display      = tEvals.length      ? '' : 'none';
+  document.getElementById('trash-todos-section').style.display      = tTodos.length      ? '' : 'none';
+  document.getElementById('trash-reminders-section').style.display  = tReminders.length  ? '' : 'none';
 
-  document.getElementById('trash-task-count').textContent    = tTasks.length;
-  document.getElementById('trash-note-count').textContent    = tNotes.length;
-  document.getElementById('trash-college-count').textContent = tColleges.length;
-  document.getElementById('trash-teacher-count').textContent = tTeachers.length;
-  document.getElementById('trash-visit-count').textContent   = tVisits.length;
-  document.getElementById('trash-eval-count').textContent    = tEvals.length;
+  document.getElementById('trash-task-count').textContent      = tTasks.length;
+  document.getElementById('trash-note-count').textContent      = tNotes.length;
+  document.getElementById('trash-college-count').textContent   = tColleges.length;
+  document.getElementById('trash-teacher-count').textContent   = tTeachers.length;
+  document.getElementById('trash-visit-count').textContent     = tVisits.length;
+  document.getElementById('trash-eval-count').textContent      = tEvals.length;
+  document.getElementById('trash-todo-count').textContent      = tTodos.length;
+  document.getElementById('trash-reminder-count').textContent  = tReminders.length;
 
   document.getElementById('trash-tasks-list').innerHTML = tTasks.map(t => `
     <div class="trash-card">
@@ -573,90 +672,162 @@ function renderTrash() {
         <button class="trash-del-btn" onclick="permDeleteEval('${e.deletedAt}')">🗑 Eliminar</button>
       </div>
     </div>`).join('');
+
+  document.getElementById('trash-todos-list').innerHTML = tTodos.map(t => `
+    <div class="trash-card">
+      <div class="trash-note-preview">✅</div>
+      <div class="trash-card-body">
+        <div class="trash-card-title">${esc(t.text)}</div>
+        <div class="trash-card-meta">Colegio: ${esc(t.collegeName)} · ${t.done ? 'Completado' : 'Pendiente'} · Eliminado: ${fmtNoteDate(t.deletedAt)}</div>
+      </div>
+      <div class="trash-card-actions">
+        <button class="trash-restore-btn" onclick="restoreTodo('${t.deletedAt}')">↩ Restaurar</button>
+        <button class="trash-del-btn" onclick="permDeleteTodo('${t.deletedAt}')">🗑 Eliminar</button>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('trash-reminders-list').innerHTML = tReminders.map(r => `
+    <div class="trash-card">
+      <div class="trash-note-preview">🔔</div>
+      <div class="trash-card-body">
+        <div class="trash-card-title">${esc(r.text)}</div>
+        <div class="trash-card-meta">Fecha: ${fmtDate(r.date)}${r.time ? ' · '+r.time : ''} · Eliminado: ${fmtNoteDate(r.deletedAt)}</div>
+      </div>
+      <div class="trash-card-actions">
+        <button class="trash-restore-btn" onclick="restoreReminder('${r.deletedAt}')">↩ Restaurar</button>
+        <button class="trash-del-btn" onclick="permDeleteReminder('${r.deletedAt}')">🗑 Eliminar</button>
+      </div>
+    </div>`).join('');
 }
 
 function restoreTask(id) {
   const t = trash.tasks.find(t=>t.id===Number(id));
   if (!t) return;
   const { deletedAt, ...restored } = t;
-  tasks.unshift(restored);
   trash.tasks = trash.tasks.filter(t=>t.id!==Number(id));
-  save(); renderTrash(); renderDashboard();
+  fbSetTask(restored.id, restored);
+  fbSaveTrash();
 }
 function permDeleteTask(id) {
   if (!confirm('¿Eliminar esta tarea permanentemente? Esta acción no se puede deshacer.')) return;
   trash.tasks = trash.tasks.filter(t=>t.id!==Number(id));
-  save(); renderTrash();
+  fbSaveTrash();
 }
 function restoreNote(id) {
   const n = trash.notes.find(n=>n.id===Number(id));
   if (!n) return;
   const { deletedAt, ...restored } = n;
-  notes.unshift(restored);
   trash.notes = trash.notes.filter(n=>n.id!==Number(id));
-  save(); renderTrash();
+  fbSetNote(restored.id, restored);
+  fbSaveTrash();
 }
 function permDeleteNote(id) {
   if (!confirm('¿Eliminar esta nota permanentemente? Esta acción no se puede deshacer.')) return;
   trash.notes = trash.notes.filter(n=>n.id!==Number(id));
-  save(); renderTrash();
+  fbSaveTrash();
 }
 function restoreCollege(id) {
   const c = (trash.colleges||[]).find(c=>c.id===id);
   if (!c) return;
   const { deletedAt, ...restored } = c;
-  colleges.push(restored);
   trash.colleges = (trash.colleges||[]).filter(c=>c.id!==id);
-  saveColleges(); save(); renderTrash();
+  colleges.push(restored);
+  fbSetCollege(restored.id, restored);
+  fbSaveTrash();
 }
 function permDeleteCollege(id) {
   if (!confirm('¿Eliminar este colegio permanentemente? Esta acción no se puede deshacer.')) return;
   trash.colleges = (trash.colleges||[]).filter(c=>c.id!==id);
-  save(); renderTrash();
+  fbSaveTrash();
 }
 function restoreTeacher(deletedAt) {
   const t = (trash.teachers||[]).find(t=>t.deletedAt===deletedAt);
   if (!t) return;
   const c = colleges.find(c=>c.id===t.collegeId);
-  if (c) { const { deletedAt: _, collegeId: __, collegeName: ___, origIdx: ____, ...restored } = t; c.teachers.push(restored); saveColleges(); }
+  if (!c) { alert(`El colegio "${t.collegeName}" no existe. Restáuralo primero desde la papelera.`); return; }
+  const { deletedAt: _, collegeId: __, collegeName: ___, origIdx: ____, ...restored } = t;
+  c.teachers.push(restored);
   trash.teachers = (trash.teachers||[]).filter(t=>t.deletedAt!==deletedAt);
-  save(); renderTrash();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  if (currentCollegeId === c.id) renderTeachers();
 }
 function permDeleteTeacher(deletedAt) {
   if (!confirm('¿Eliminar permanentemente?')) return;
   trash.teachers = (trash.teachers||[]).filter(t=>t.deletedAt!==deletedAt);
-  save(); renderTrash();
+  fbSaveTrash();
 }
 function restoreVisit(deletedAt) {
   const v = (trash.visits||[]).find(v=>v.deletedAt===deletedAt);
   if (!v) return;
   const c = colleges.find(c=>c.id===v.collegeId);
-  if (c) { const { deletedAt: _, collegeId: __, collegeName: ___, ...restored } = v; c.visits.push(restored); saveColleges(); }
+  if (!c) { alert(`El colegio "${v.collegeName}" no existe. Restáuralo primero desde la papelera.`); return; }
+  const { deletedAt: _, collegeId: __, collegeName: ___, ...restored } = v;
+  c.visits.push(restored);
   trash.visits = (trash.visits||[]).filter(v=>v.deletedAt!==deletedAt);
-  save(); renderTrash();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  if (currentCollegeId === c.id) renderVisits();
 }
 function permDeleteVisit(deletedAt) {
   if (!confirm('¿Eliminar permanentemente?')) return;
   trash.visits = (trash.visits||[]).filter(v=>v.deletedAt!==deletedAt);
-  save(); renderTrash();
+  fbSaveTrash();
 }
 function restoreEval(deletedAt) {
   const e = (trash.evals||[]).find(e=>e.deletedAt===deletedAt);
   if (!e) return;
   const c = colleges.find(c=>c.id===e.collegeId);
-  if (c) { const { deletedAt: _, collegeId: __, collegeName: ___, ...restored } = e; c.evaluations.unshift(restored); saveColleges(); }
+  if (!c) { alert(`El colegio "${e.collegeName}" no existe. Restáuralo primero desde la papelera.`); return; }
+  const { deletedAt: _, collegeId: __, collegeName: ___, ...restored } = e;
+  c.evaluations.unshift(restored);
   trash.evals = (trash.evals||[]).filter(e=>e.deletedAt!==deletedAt);
-  save(); renderTrash();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  if (currentCollegeId === c.id) renderEvals();
 }
 function permDeleteEval(deletedAt) {
   if (!confirm('¿Eliminar permanentemente?')) return;
   trash.evals = (trash.evals||[]).filter(e=>e.deletedAt!==deletedAt);
-  save(); renderTrash();
+  fbSaveTrash();
+}
+function restoreTodo(deletedAt) {
+  const t = (trash.todos||[]).find(t=>t.deletedAt===deletedAt);
+  if (!t) return;
+  const c = colleges.find(c=>c.id===t.collegeId);
+  if (!c) { alert(`El colegio "${t.collegeName}" no existe. Restáuralo primero desde la papelera.`); return; }
+  const { deletedAt: _, collegeId: __, collegeName: ___, ...restored } = t;
+  c.todos.push(restored);
+  trash.todos = (trash.todos||[]).filter(t=>t.deletedAt!==deletedAt);
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  if (currentCollegeId === c.id) renderCollegeTodos();
+}
+function permDeleteTodo(deletedAt) {
+  if (!confirm('¿Eliminar permanentemente?')) return;
+  trash.todos = (trash.todos||[]).filter(t=>t.deletedAt!==deletedAt);
+  fbSaveTrash();
+}
+function restoreReminder(deletedAt) {
+  const r = (trash.reminders||[]).find(r=>r.deletedAt===deletedAt);
+  if (!r) return;
+  if (!reminders[r.date]) reminders[r.date] = [];
+  const { deletedAt: _, date, ...restored } = r;
+  reminders[date].push(restored);
+  trash.reminders = (trash.reminders||[]).filter(r=>r.deletedAt!==deletedAt);
+  fbSaveReminders();
+  fbSaveTrash();
+  if (selectedCalDay === date) renderDayReminders(date);
+}
+function permDeleteReminder(deletedAt) {
+  if (!confirm('¿Eliminar permanentemente?')) return;
+  trash.reminders = (trash.reminders||[]).filter(r=>r.deletedAt!==deletedAt);
+  fbSaveTrash();
 }
 function emptyTrash() {
   if (!confirm('¿Vaciar toda la papelera? Todos los elementos se eliminarán permanentemente y no podrás recuperarlos.')) return;
-  trash = { tasks: [], notes: [], colleges: [], teachers: [], visits: [], evals: [] };
-  save(); renderTrash();
+  trash = { tasks: [], notes: [], colleges: [], teachers: [], visits: [], evals: [], todos: [], reminders: [] };
+  fbSaveTrash();
 }
 
 // Cerrar modales al clic fuera
@@ -666,9 +837,7 @@ function emptyTrash() {
   });
 });
 
-
 // ══ COLEGIOS ══
-let colleges = JSON.parse(localStorage.getItem('flow_colleges') || '[]');
 let currentCollegeId = null;
 
 const COLLEGE_THEMES = {
@@ -676,10 +845,6 @@ const COLLEGE_THEMES = {
   margarita:{ icon: '🌸', label: 'Margarita', badge: 'badge-margarita' },
   tulipan:  { icon: '🌷', label: 'Tulipán',   badge: 'badge-tulipan' }
 };
-
-function saveColleges() {
-  localStorage.setItem('flow_colleges', JSON.stringify(colleges));
-}
 
 function renderColleges() {
   const grid = document.getElementById('colleges-grid');
@@ -719,7 +884,6 @@ function viewCollege(id) {
       <div class="page-title" style="font-size:28px">${esc(c.name)}</div>
       ${c.location ? `<div class="page-subtitle">${esc(c.location)}</div>` : ''}
     </div>`;
-  // reset tabs
   document.querySelectorAll('.college-tab').forEach((t,i) => t.classList.toggle('active', i===0));
   document.querySelectorAll('.college-tab-panel').forEach((p,i) => p.classList.toggle('active', i===0));
   renderTeachers(); renderVisits(); renderEvals(); renderCollegeTodos();
@@ -769,20 +933,26 @@ function saveCollege() {
   if (!name) { alert('Escribe el nombre del colegio'); return; }
   if (editingCollegeId !== null) {
     const c = colleges.find(c => c.id === editingCollegeId);
-    if (c) { c.name = name; c.theme = document.getElementById('cm-theme').value; c.location = document.getElementById('cm-location').value.trim(); }
+    if (c) {
+      c.name = name;
+      c.theme = document.getElementById('cm-theme').value;
+      c.location = document.getElementById('cm-location').value.trim();
+      fbSetCollege(c.id, c);
+    }
   } else {
-    colleges.push({ id: Date.now(), name, theme: document.getElementById('cm-theme').value, location: document.getElementById('cm-location').value.trim(), teachers: [], visits: [], evaluations: [], todos: [], created: new Date().toISOString() });
+    const id = Date.now();
+    const college = { id, name, theme: document.getElementById('cm-theme').value, location: document.getElementById('cm-location').value.trim(), teachers: [], visits: [], evaluations: [], todos: [], created: new Date().toISOString() };
+    fbSetCollege(id, college);
   }
-  saveColleges(); closeCollegeModal(); renderColleges();
+  closeCollegeModal();
 }
 function deleteCollege(id) {
   if (!confirm('¿Mover este colegio a la papelera?')) return;
   const c = colleges.find(c => c.id === id);
   if (!c) return;
-  if (!trash.colleges) trash.colleges = [];
-  trash.colleges.push({ ...c, deletedAt: new Date().toISOString() });
-  colleges = colleges.filter(c => c.id !== id);
-  saveColleges(); save(); renderColleges();
+  sendToTrash('colleges', c);
+  fbRemoveCollege(id);
+  fbSaveTrash();
 }
 
 // Teachers
@@ -829,18 +999,19 @@ function saveTeacher() {
   } else {
     c.teachers.push({ name, grade: document.getElementById('tm-grade').value.trim() });
   }
-  saveColleges(); closeModal('teacher-modal');
+  fbSetCollege(c.id, c);
+  closeModal('teacher-modal');
   ['tm-name','tm-grade'].forEach(id => document.getElementById(id).value = '');
   editingTeacherIdx = null;
   renderTeachers();
 }
 function deleteTeacher(idx) {
   const c = currentCollege();
-  const t = c.teachers[idx];
-  if (!trash.teachers) trash.teachers = [];
-  trash.teachers.push({ ...t, collegeId: c.id, collegeName: c.name, deletedAt: new Date().toISOString(), origIdx: idx });
+  sendToTrash('teachers', { ...c.teachers[idx], collegeId: c.id, collegeName: c.name, origIdx: idx });
   c.teachers.splice(idx, 1);
-  saveColleges(); save(); renderTeachers();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  renderTeachers();
 }
 
 // Visits
@@ -888,18 +1059,19 @@ function saveVisit() {
   } else {
     c.visits.push(visitData);
   }
-  saveColleges(); closeModal('visit-modal');
+  fbSetCollege(c.id, c);
+  closeModal('visit-modal');
   ['vm-date','vm-purpose','vm-notes'].forEach(id => document.getElementById(id).value = '');
   editingVisitIdx = null;
   renderVisits();
 }
 function deleteVisit(idx) {
   const c = currentCollege();
-  const v = c.visits[idx];
-  if (!trash.visits) trash.visits = [];
-  trash.visits.push({ ...v, collegeId: c.id, collegeName: c.name, deletedAt: new Date().toISOString() });
+  sendToTrash('visits', { ...c.visits[idx], collegeId: c.id, collegeName: c.name });
   c.visits.splice(idx,1);
-  saveColleges(); save(); renderVisits();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  renderVisits();
 }
 
 // Evaluations
@@ -933,7 +1105,6 @@ let editingEvalIdx = null;
 function openEvalModal() {
   editingEvalIdx = null;
   document.getElementById('eval-modal-title').textContent = '📋 Ficha de Observación';
-  // Populate teacher dropdown
   const c = currentCollege();
   const sel = document.getElementById('em-teacher');
   sel.innerHTML = '<option value="">Seleccionar teacher...</option>' + (c ? c.teachers.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('') : '');
@@ -944,7 +1115,6 @@ function openEditEvalModal(idx) {
   const e = c.evaluations[idx];
   editingEvalIdx = idx;
   document.getElementById('eval-modal-title').textContent = '✏️ Editar Ficha';
-  // Populate teacher dropdown
   const sel = document.getElementById('em-teacher');
   sel.innerHTML = '<option value="">Seleccionar teacher...</option>' + (c ? c.teachers.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('') : '');
   sel.value = e.teacher || '';
@@ -965,7 +1135,8 @@ function saveEval() {
   } else {
     c.evaluations.unshift(evalData);
   }
-  saveColleges(); closeModal('eval-modal');
+  fbSetCollege(c.id, c);
+  closeModal('eval-modal');
   ['em-teacher','em-date','em-strengths','em-improvements','em-commitments'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('em-rating').value = '5';
   editingEvalIdx = null;
@@ -973,11 +1144,11 @@ function saveEval() {
 }
 function deleteEval(idx) {
   const c = currentCollege();
-  const e = c.evaluations[idx];
-  if (!trash.evals) trash.evals = [];
-  trash.evals.push({ ...e, collegeId: c.id, collegeName: c.name, deletedAt: new Date().toISOString() });
+  sendToTrash('evals', { ...c.evaluations[idx], collegeId: c.id, collegeName: c.name });
   c.evaluations.splice(idx,1);
-  saveColleges(); save(); renderEvals();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  renderEvals();
 }
 
 // Todos
@@ -1001,17 +1172,22 @@ function addCollegeTodo() {
   const c = currentCollege();
   c.todos.push({ text, done: false });
   inp.value = '';
-  saveColleges(); renderCollegeTodos();
+  fbSetCollege(c.id, c);
+  renderCollegeTodos();
 }
 function toggleCollegeTodo(idx) {
   const c = currentCollege();
   c.todos[idx].done = !c.todos[idx].done;
-  saveColleges(); renderCollegeTodos();
+  fbSetCollege(c.id, c);
+  renderCollegeTodos();
 }
 function deleteCollegeTodo(idx) {
   const c = currentCollege();
+  sendToTrash('todos', { ...c.todos[idx], collegeId: c.id, collegeName: c.name });
   c.todos.splice(idx,1);
-  saveColleges(); renderCollegeTodos();
+  fbSetCollege(c.id, c);
+  fbSaveTrash();
+  renderCollegeTodos();
 }
 
 function closeModal(id) {
@@ -1032,18 +1208,36 @@ document.getElementById('college-modal').addEventListener('click', function(e){ 
 // INIT
 renderDashboard();
 renderCalendar();
+updateTrashBadge();
 
 // ── MENÚ HAMBURGUESA (móvil) ──
 document.getElementById('menu-toggle').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.toggle('sidebar-active');
 });
-
 document.getElementById('sidebar-overlay').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.remove('sidebar-active');
 });
-
 document.querySelectorAll('.sidebar .nav-item').forEach(item => {
   item.addEventListener('click', () => {
     document.querySelector('.sidebar').classList.remove('sidebar-active');
   });
+});
+
+// ══ EXPONER AL SCOPE GLOBAL (requerido por onclick en HTML) ══
+Object.assign(window, {
+  showView, toggleDark, addTask, clearTaskForm, toggleFormExtra, openFormExtra,
+  openTaskModal, setEditStatus, saveEditTask, deleteEditingTask, closeTaskModal,
+  changeMonth, selectDay, toggleReminderForm, addReminder, deleteReminder,
+  openNoteModal, closeNoteModal, saveNote, deleteNoteFromModal, selectNoteColor,
+  togglePin, deleteNote, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
+  openCollegeModal, openEditCollegeModal, closeCollegeModal, saveCollege, deleteCollege,
+  viewCollege, backToColleges, switchCollegeTab,
+  openTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
+  closeModal, openVisitModal, openEditVisitModal, saveVisit, deleteVisit,
+  openEvalModal, openEditEvalModal, saveEval, deleteEval,
+  addCollegeTodo, toggleCollegeTodo, deleteCollegeTodo,
+  restoreTask, permDeleteTask, restoreNote, permDeleteNote,
+  restoreCollege, permDeleteCollege, restoreTeacher, permDeleteTeacher,
+  restoreVisit, permDeleteVisit, restoreEval, permDeleteEval,
+  restoreTodo, permDeleteTodo, restoreReminder, permDeleteReminder, emptyTrash
 });
