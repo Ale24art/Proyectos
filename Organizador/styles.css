@@ -218,6 +218,14 @@
     border-radius: 0 3px 3px 0;
   }
   .nav-item.trash-nav.active::before { background: var(--trash-color); }
+  .nav-item.logout-btn {
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+  .nav-item.logout-btn:hover {
+    background: var(--trash-light);
+    color: var(--trash-color);
+  }
 
   .nav-badge {
     margin-left: auto;

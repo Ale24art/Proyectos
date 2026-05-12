@@ -66,6 +66,16 @@
     </div>
   </div>
 
+  <button class="nav-item logout-btn" onclick="logout()">
+    <span class="nav-icon">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M10.5 11L14 8m0 0l-3.5-3M14 8H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Cerrar sesión
+  </button>
+
   <div class="sidebar-footer">
     <div style="margin-bottom:4px;font-weight:700">Dreha · tu espacio 🌸</div>
     <div style="font-size:10px;opacity:0.6">© Developed by<br>José Alejandro Montilla</div>
@@ -81,7 +91,7 @@
     <div class="page-header">
       <div class="dashboard-header-decor">
         <div>
-          <div class="page-title">Hola, Andrea <span class="greeting-sunflower">🐱</span></div>
+          <div class="page-title" id="page-greeting">Hola, Andrea <span class="greeting-sunflower">🐱</span></div>
           <div class="page-subtitle" id="dashboard-date"></div>
         </div>
       </div>

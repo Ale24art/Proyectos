@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acceso — Dreha.</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌻</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #F5C842;
+      background-image: radial-gradient(circle, rgba(255,255,255,0.18) 1.5px, transparent 1.5px);
+      background-size: 22px 22px;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: #fff;
+      border-radius: 28px;
+      padding: 48px 44px 40px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow:
+        0 6px 0 0 #D4A030,
+        0 20px 50px rgba(120, 80, 0, 0.22);
+      text-align: center;
+      animation: cardIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(28px) scale(0.96); }
+      to   { opacity: 1; transform: translateY(0)    scale(1); }
+    }
+
+    .login-logo-wrap {
+      width: 100px;
+      height: 100px;
+      background: linear-gradient(135deg, #F5C842, #F0A830);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 18px;
+      font-size: 50px;
+      box-shadow: 0 4px 16px rgba(200,140,0,0.35);
+      line-height: 1;
+    }
+
+    .login-brand {
+      font-size: 34px;
+      font-weight: 900;
+      color: #C97D3E;
+      letter-spacing: -0.5px;
+      line-height: 1;
+    }
+
+    .login-brand .dot { color: #F5C842; }
+
+    .login-subtitle {
+      font-size: 13.5px;
+      color: #A08C78;
+      margin-top: 5px;
+      margin-bottom: 32px;
+      font-weight: 600;
+    }
+
+    .login-field-label {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #A08C78;
+      margin-bottom: 9px;
+    }
+
+    .login-input-wrap {
+      position: relative;
+      margin-bottom: 12px;
+    }
+
+    .login-input-wrap input {
+      width: 100%;
+      padding: 15px 52px 15px 18px;
+      border: 2px solid #EDE5D8;
+      border-radius: 14px;
+      font-size: 17px;
+      font-family: inherit;
+      color: #2C1F14;
+      background: #FDF8F3;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      letter-spacing: 0.12em;
+    }
+
+    .login-input-wrap input::placeholder {
+      letter-spacing: 0.08em;
+      color: #C8B8A4;
+    }
+
+    .login-input-wrap input:focus {
+      border-color: #C97D3E;
+      box-shadow: 0 0 0 3px rgba(201,125,62,0.12);
+    }
+
+    .eye-btn {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 19px;
+      opacity: 0.45;
+      padding: 6px;
+      line-height: 1;
+      transition: opacity 0.15s;
+    }
+
+    .eye-btn:hover { opacity: 0.75; }
+
+    .login-error {
+      display: none;
+      background: #FCEAEA;
+      color: #B84040;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      text-align: left;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border-left: 3px solid #B84040;
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #6AAB70 0%, #5A8A5F 100%);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 800;
+      font-family: inherit;
+      cursor: pointer;
+      margin-top: 4px;
+      letter-spacing: 0.03em;
+      box-shadow: 0 4px 0 0 #3E6B43;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.1s;
+    }
+
+    .login-btn:hover  { opacity: 0.93; }
+    .login-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 0 #3E6B43; }
+
+    .login-footer {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #C8B8A4;
+      font-weight: 600;
+    }
+
+    /* Responsive móvil */
+    @media (max-width: 480px) {
+      .login-card {
+        padding: 36px 24px 30px;
+        border-radius: 22px;
+      }
+      .login-logo-wrap { width: 84px; height: 84px; font-size: 42px; }
+      .login-brand { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="login-card">
+    <div class="login-logo-wrap">🌻</div>
+    <div class="login-brand">Dreha<span class="dot">.</span></div>
+    <div class="login-subtitle">Acceso exclusivo al organizador</div>
+
+    <div class="login-field-label">CÓDIGO DE ACCESO</div>
+    <div class="login-input-wrap">
+      <input
+        type="password"
+        id="code-input"
+        placeholder="••••••••"
+        autocomplete="off"
+        inputmode="numeric"
+      />
+      <button class="eye-btn" onclick="toggleEye()" id="eye-btn" title="Mostrar/ocultar">👁</button>
+    </div>
+
+    <div class="login-error" id="login-error"></div>
+
+    <button class="login-btn" onclick="doLogin()">Ingresar →</button>
+
+    <div class="login-footer">Tu espacio personal · Dreha.</div>
+  </div>
+
+  <script>
+    // Si ya hay sesión activa, ir directamente al app
+    const _savedUser = sessionStorage.getItem('orgUser');
+    if (_savedUser) window.location.replace('index.html');
+
+    const USERS = {
+      '29762550': 'dreha',
+      '2114':     'ale'
+    };
+
+    function doLogin() {
+      const code = document.getElementById('code-input').value.trim();
+      const user = USERS[code];
+      if (user) {
+        sessionStorage.setItem('orgUser', user);
+        window.location.replace('index.html');
+      } else {
+        showError('Código incorrecto. Intenta de nuevo.');
+        document.getElementById('code-input').select();
+      }
+    }
+
+    function toggleEye() {
+      const inp = document.getElementById('code-input');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    function showError(msg) {
+      const err = document.getElementById('login-error');
+      err.textContent = msg;
+      err.style.display = 'block';
+    }
+
+    document.getElementById('code-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+      document.getElementById('login-error').style.display = 'none';
+    });
+
+    document.getElementById('code-input').focus();
+  </script>
+</body>
+</html>

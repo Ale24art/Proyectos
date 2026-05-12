@@ -1,6 +1,15 @@
 import { db } from './firebase-config.js';
 import { ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
+// ══ SESIÓN ══
+const _orgUser = sessionStorage.getItem('orgUser');
+if (!_orgUser) {
+  window.location.replace('login.html');
+  throw new Error('Unauthenticated');
+}
+const USER_PATH = _orgUser + '/';
+const USER_NAME  = _orgUser === 'dreha' ? 'Andrea' : 'Ale';
+
 // ══ ESTADO LOCAL ══
 let tasks     = [];
 let notes     = [];
@@ -27,41 +36,41 @@ function toArray(v) {
   if (!v) return [];
   return Array.isArray(v) ? v : Object.values(v);
 }
-function fbSetTask(id, data)    { set(ref(db, 'tasks/'    + id), data); }
-function fbRemoveTask(id)       { remove(ref(db, 'tasks/' + id)); }
-function fbSetNote(id, data)    { set(ref(db, 'notes/'    + id), data); }
-function fbRemoveNote(id)       { remove(ref(db, 'notes/' + id)); }
-function fbSetCollege(id, data) { set(ref(db, 'colleges/' + id), data); }
-function fbRemoveCollege(id)    { remove(ref(db, 'colleges/' + id)); }
-function fbSaveReminders()      { set(ref(db, 'reminders'), reminders); }
-function fbSaveTrash()          { set(ref(db, 'trash'), trash); }
+function fbSetTask(id, data)    { set(ref(db, USER_PATH + 'tasks/'    + id), data); }
+function fbRemoveTask(id)       { remove(ref(db, USER_PATH + 'tasks/' + id)); }
+function fbSetNote(id, data)    { set(ref(db, USER_PATH + 'notes/'    + id), data); }
+function fbRemoveNote(id)       { remove(ref(db, USER_PATH + 'notes/' + id)); }
+function fbSetCollege(id, data) { set(ref(db, USER_PATH + 'colleges/' + id), data); }
+function fbRemoveCollege(id)    { remove(ref(db, USER_PATH + 'colleges/' + id)); }
+function fbSaveReminders()      { set(ref(db, USER_PATH + 'reminders'), reminders); }
+function fbSaveTrash()          { set(ref(db, USER_PATH + 'trash'), trash); }
 
 function saveColleges() {
   const obj = {};
   colleges.forEach(c => { obj[c.id] = c; });
-  set(ref(db, 'colleges'), obj);
+  set(ref(db, USER_PATH + 'colleges'), obj);
 }
 
 // ══ LISTENERS EN TIEMPO REAL ══
-onValue(ref(db, 'tasks'), snap => {
+onValue(ref(db, USER_PATH + 'tasks'), snap => {
   tasks = snap.val() ? Object.values(snap.val()) : [];
   renderTasks(); renderDashboard(); renderCalendar();
 });
 
-onValue(ref(db, 'notes'), snap => {
+onValue(ref(db, USER_PATH + 'notes'), snap => {
   notes = snap.val()
     ? Object.values(snap.val()).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
     : [];
   renderNotes();
 });
 
-onValue(ref(db, 'reminders'), snap => {
+onValue(ref(db, USER_PATH + 'reminders'), snap => {
   reminders = snap.val() || {};
   renderCalendar();
   if (selectedCalDay) renderDayReminders(selectedCalDay);
 });
 
-onValue(ref(db, 'trash'), snap => {
+onValue(ref(db, USER_PATH + 'trash'), snap => {
   const v = snap.val() || {};
   trash = {
     tasks:     toArray(v.tasks),
@@ -77,7 +86,7 @@ onValue(ref(db, 'trash'), snap => {
   renderTrash();
 });
 
-onValue(ref(db, 'colleges'), snap => {
+onValue(ref(db, USER_PATH + 'colleges'), snap => {
   const v = snap.val();
   colleges = v ? Object.values(v).map(c => ({
     ...c,
@@ -486,7 +495,7 @@ function onDrop(e, targetId) {
   notes.splice(tgtIdx, 0, moved);
   const obj = {};
   notes.forEach((n, i) => { obj[n.id] = { ...n, sortOrder: i }; });
-  set(ref(db, 'notes'), obj);
+  set(ref(db, USER_PATH + 'notes'), obj);
   renderNotes();
 }
 function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); dragSrcId = null; }
@@ -1205,10 +1214,20 @@ document.getElementById('college-modal').addEventListener('click', function(e){ 
   });
 });
 
+// ══ CERRAR SESIÓN ══
+function logout() {
+  sessionStorage.removeItem('orgUser');
+  window.location.replace('login.html');
+}
+
 // INIT
 renderDashboard();
 renderCalendar();
 updateTrashBadge();
+
+// Saludo dinámico según usuario
+const _greetingEl = document.getElementById('page-greeting');
+if (_greetingEl) _greetingEl.innerHTML = `Hola, ${USER_NAME} <span class="greeting-sunflower">🐱</span>`;
 
 // ── MENÚ HAMBURGUESA (móvil) ──
 document.getElementById('menu-toggle').addEventListener('click', () => {
@@ -1239,5 +1258,6 @@ Object.assign(window, {
   restoreTask, permDeleteTask, restoreNote, permDeleteNote,
   restoreCollege, permDeleteCollege, restoreTeacher, permDeleteTeacher,
   restoreVisit, permDeleteVisit, restoreEval, permDeleteEval,
-  restoreTodo, permDeleteTodo, restoreReminder, permDeleteReminder, emptyTrash
+  restoreTodo, permDeleteTodo, restoreReminder, permDeleteReminder, emptyTrash,
+  logout
 });
