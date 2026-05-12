@@ -1,0 +1,38 @@
+Quiro sabeer como puedo optimizar el siguiente flujo de trabajo con claude code para gastar menos tokens, cabe destacar que yo estaba usando claude desde el navegador y ahora con claude code directamente en mi ordenador quiero optimizar el flujo de trabajo:
+
+
+Estoy haciendo el siguiente organizador basado en google keep usando como herramienta principal de contrucion cluade y claude code. necesito que me ayudes hacer modificaciones, cambios, aclarar dudas de como implementar ideas en el mismoy dar intrucciones clarar y precisas para claude code para gastar menos tokens:
+
+vamos a lo mas importante como puedo hacer que ella pueda abrir este organizador que he estado preparando en su laptop y telefono y que la informacion sea la misma y que yo pueda hacer cambios que ella me vaya pidiendo haciendoles commit desde git hub?
+
+Actualmente, como toda la información se guarda en el navegador de la computadora (localStorage)
+
+* quiero le coloques la funcion de modo Oscuro
+* Necesito que coloques una categoria llamada papelera en donde vayan las notas, tareas eliminadas y en donde en el apartado de papelera tenga la opcion de elimianrlas permamenemente. Esto amodo de seguro o resplado de eliminar una nota por error
+
+
+
+Estoy haciendo un siguiente organizador al estilo google keep con html para mi novia llamada Andrea (aqui tienes el html del mismo) basado en google keep necesito que me ayudes hacer modificaciones y cambios en el mismo y desarrollar este proyecto:
+
+* Quiero que el organizador se llame "Dreha".
+
+* Ella le gsta mucho las flores y los animales son sus cosas favoritas su flor favorita es lo girasoles, y sus otras 2 favoritas son las margarias y tulipanes y sus animales favorios son los gatitos, perros y caphibaras quiero que utilizando conocimeinto profesional de frontend y backend combindas tomes mi organizador en html y le hagas un proceso de rediseno a nivel visual sin afectar todas las funcionas que ya estan en el mismo, tengo encuenta que este organizado esta pensado para una chica, siente libre de hacer una propuestas colocando intereaciones y animaciones con Css pero sin exagerar para que la app web no quede pesada.
+
+
+Sin importar en qué parte de este mundo estés, te encontraré de nuevo. Te amo
+
+
+Estoy haciendo un siguiente organizador al estilo google keep con html para mi novia llamada Andrea (aqui tienes el html del mismo) basado en google keep necesito que me ayudes hacer modificaciones y cambios en el mismo y desarrollar este proyecto:
+
+Necesito que hagamos los siguientes cambios:
+
+1. En donde esta el colegio debe tener un boton para poder editar o eliminar el mismo.
+
+2. Dentro de teachers debe tener un boton para poder editar o eliminar el mismo.
+al momento de agregar un teacher puedes quitar lo de que materia ensena ya que todo es ingles
+
+3. en cronogromas debe tener un boton para poder editar o eliminar el mismo.
+
+4. en 📋 Ficha de Observación quita el apartado materia ya que todo es ingles. tambien donde dice docente observado deberia tener la opcion de seleccionar los docentes que estan en el apartado de teacher "cambiar el nombre que en vez que sea docente diga teacher.
+
+Importante todo archivo, nota eliminada (esto incluye hasta un colegio) debe ir a papelera en donde esta la opcion de desaser y eliminar de forma permanente
