@@ -1527,7 +1527,7 @@ const _greetingEl = document.getElementById('page-greeting');
 if (_greetingEl) _greetingEl.innerHTML = `Hola, ${USER_NAME} <span class="greeting-sunflower">🐱</span>`;
 
 // ── MENÚ HAMBURGUESA (móvil) ──
-document.getElementById('menu-toggle').addEventListener('click', () => {
+document.getElementById('menu-toggle').addEventListener('pointerdown', () => {
   document.querySelector('.sidebar').classList.toggle('sidebar-active');
 });
 document.getElementById('sidebar-overlay').addEventListener('click', () => {
