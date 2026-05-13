@@ -1251,7 +1251,12 @@
   .note-card    { padding: 14px; }
   .report-card  { padding: 15px 16px; }
   .college-card { padding: 14px 16px; }
-  .modal        { padding: 20px 16px; max-width: 96vw; }
+  .modal {
+    padding: 14px 16px 18px;
+    max-width: 96vw;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
 
   /* ─── FORMULARIOS ─── */
   .form-grid { grid-template-columns: 1fr 1fr; }
