@@ -1141,6 +1141,16 @@
   transition: opacity 0.3s ease;
 }
 
+/* ══ REPORTES ══ */
+  .reports-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .report-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 22px 24px; }
+  .report-preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+  .report-preview-body { font-family: 'Nunito', sans-serif; font-size: 12.5px; line-height: 1.9; white-space: pre-wrap; min-height: 320px; color: var(--text); word-break: break-word; }
+  .rep-textarea { min-height: 88px; }
+  .report-copy-btn { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .copy-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--green); color: #fff; padding: 10px 24px; border-radius: 50px; font-size: 13px; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity 0.28s ease, transform 0.28s ease; z-index: 9998; box-shadow: 0 4px 20px rgba(0,0,0,0.18); white-space: nowrap; }
+  .copy-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* ══ RESPONSIVE — MÓVIL ══ */
 @media (max-width: 768px) {
   .sidebar {
@@ -1231,4 +1241,7 @@
     margin-left: 0;
     margin-right: 0;
   }
+
+  /* 5. Reportes → apilado */
+  .reports-layout { grid-template-columns: 1fr; }
 }

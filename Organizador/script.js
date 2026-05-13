@@ -100,6 +100,7 @@ onValue(ref(db, USER_PATH + 'colleges'), snap => {
   })) : [];
   renderColleges();
   renderCalendar();
+  populateCollegeSelect();
   if (currentCollegeId) {
     renderTeachers(); renderVisits(); renderEvals(); renderCollegeTodos();
   }
@@ -142,7 +143,7 @@ function toggleDark() {
 if (localStorage.getItem('flow_dark') === '1') document.body.classList.add('dark');
 
 // ══ NAVEGACIÓN ══
-const NAV_VIEWS = ['dashboard','tasks','calendar','notes','colleges','trash'];
+const NAV_VIEWS = ['dashboard','tasks','calendar','notes','colleges','reportes','trash'];
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -155,6 +156,7 @@ function showView(id) {
   if (id==='notes')     renderNotes();
   if (id==='trash')     renderTrash();
   if (id==='colleges')  renderColleges();
+  if (id==='reportes')  { populateCollegeSelect(); updateTeacherSelect(); updateReportPreview(); }
 }
 
 // ══ DASHBOARD ══
@@ -1265,6 +1267,129 @@ document.getElementById('college-modal').addEventListener('click', function(e){ 
   });
 });
 
+// ══ REPORTES ══
+const REP_FIELDS = ['rep-college','rep-date','rep-teacher','rep-grade','rep-logros','rep-mejoras','rep-extras'];
+let _reportSaveTimer = null;
+
+onValue(ref(db, USER_PATH + 'reportes/draft'), snap => {
+  const d = snap.val();
+  if (!d) return;
+  REP_FIELDS.filter(id => id !== 'rep-teacher').forEach(id => {
+    const el = document.getElementById(id);
+    if (el && d[id]) el.value = d[id];
+  });
+  updateTeacherSelect();
+  if (d['rep-teacher']) {
+    const sel = document.getElementById('rep-teacher');
+    if (sel) sel.value = d['rep-teacher'];
+  }
+  updateReportPreview();
+});
+
+function onReportInput() {
+  updateReportPreview();
+  clearTimeout(_reportSaveTimer);
+  _reportSaveTimer = setTimeout(() => {
+    const draft = {};
+    REP_FIELDS.forEach(id => { draft[id] = document.getElementById(id)?.value || ''; });
+    set(ref(db, USER_PATH + 'reportes/draft'), draft);
+  }, 900);
+}
+
+function populateCollegeSelect() {
+  const sel = document.getElementById('rep-college');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Seleccionar colegio...</option>' +
+    colleges.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  if (prev) sel.value = prev;
+  updateTeacherSelect();
+}
+
+function updateTeacherSelect() {
+  const collegeName = (document.getElementById('rep-college')?.value || '').trim();
+  const sel = document.getElementById('rep-teacher');
+  if (!sel) return;
+
+  if (!collegeName) {
+    sel.innerHTML = '<option value="">— Selecciona un colegio primero —</option>';
+    onReportInput();
+    return;
+  }
+
+  const college = colleges.find(c => c.name.toLowerCase() === collegeName.toLowerCase());
+  if (!college || !college.teachers.length) {
+    sel.innerHTML = '<option value="">— Sin teachers registrados —</option>';
+    onReportInput();
+    return;
+  }
+
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Seleccionar teacher...</option>' +
+    college.teachers.map(t =>
+      `<option value="${esc(t.name)}">${esc(t.name)}${t.grade ? ' · ' + esc(t.grade) : ''}</option>`
+    ).join('');
+  if (prev) sel.value = prev;
+  onReportInput();
+}
+
+function fmtReportDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  return `${days[new Date(Number(y), Number(m) - 1, Number(d)).getDay()]} ${d}/${m}/${y}`;
+}
+
+function buildReport() {
+  const college = (document.getElementById('rep-college')?.value || '').trim();
+  const date    =  document.getElementById('rep-date')?.value    || '';
+  const teacher = (document.getElementById('rep-teacher')?.value || '').trim();
+  const grade   = (document.getElementById('rep-grade')?.value   || '').trim();
+  const logros  = (document.getElementById('rep-logros')?.value  || '').trim();
+  const mejoras = (document.getElementById('rep-mejoras')?.value || '').trim();
+  const extras  = (document.getElementById('rep-extras')?.value  || '').trim();
+
+  const fmt = lines => lines.split('\n').filter(l => l.trim()).map(l => `- ${l.trim()}`).join('\n');
+
+  let t = '';
+  if (college) t += `${college}\n\n`;
+  if (date)    t += `${fmtReportDate(date)}\n\n`;
+  t += `👋🏻 Reciban un cordial saludo desde Cleveland English Institute. El presente es para informar sobre las actividades realizadas el día de hoy en la asignatura de inglés:\n\n`;
+  if (teacher) t += `📌 Acompañamiento pedagógico: Teacher ${teacher}.\n\n`;
+  if (grade || logros) {
+    t += `✅ Logros Alcanzados\n\n`;
+    if (teacher || grade) t += `Teacher ${teacher}${grade ? ' - ' + grade : ''}.\n\n`;
+    if (logros)  t += `${fmt(logros)}\n\n`;
+  }
+  if (mejoras) t += `🚀 Aspectos en Proceso de Mejora\n\n${fmt(mejoras)}\n\n`;
+  if (extras)  t += `${extras}\n\n`;
+  t += `🗽\nCleveland English Institute\nEmpoderando mentes, transformando futuros.`;
+  return t;
+}
+
+function updateReportPreview() {
+  const el = document.getElementById('rep-preview');
+  if (!el) return;
+  const hasContent = REP_FIELDS.filter(id => id !== 'rep-date')
+    .some(id => document.getElementById(id)?.value?.trim());
+  if (!hasContent) {
+    el.innerHTML = '<span style="color:var(--text-muted);font-size:13px">Completa el formulario y el reporte aparecerá aquí 🌻</span>';
+    return;
+  }
+  el.textContent = buildReport();
+}
+
+function copyReport() {
+  const text = buildReport();
+  if (!text.trim()) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const toast = document.getElementById('copy-toast');
+    if (!toast) return;
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2500);
+  });
+}
+
 // ══ CERRAR SESIÓN ══
 function logout() {
   sessionStorage.removeItem('orgUser');
@@ -1306,6 +1431,7 @@ Object.assign(window, {
   closeModal, openVisitModal, openEditVisitModal, saveVisit, deleteVisit, toggleVisitDone,
   openEvalModal, openEditEvalModal, saveEval, deleteEval,
   addCollegeTodo, toggleCollegeTodo, deleteCollegeTodo,
+  onReportInput, copyReport, updateTeacherSelect,
   restoreTask, permDeleteTask, restoreNote, permDeleteNote,
   restoreCollege, permDeleteCollege, restoreTeacher, permDeleteTeacher,
   restoreVisit, permDeleteVisit, restoreEval, permDeleteEval,
