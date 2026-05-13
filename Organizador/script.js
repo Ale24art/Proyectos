@@ -14,10 +14,11 @@ const _loader = document.getElementById('app-loader');
 if (_loader) _loader.style.display = 'none';
 
 // ══ ESTADO LOCAL ══
-let tasks     = [];
-let notes     = [];
-let reminders = {};
-let trash     = { tasks:[], notes:[], colleges:[], teachers:[], visits:[], evals:[], todos:[], reminders:[] };
+let tasks      = [];
+let notes      = [];
+let reminders  = {};
+let trash      = { tasks:[], notes:[], colleges:[], teachers:[], visits:[], evals:[], todos:[], reminders:[] };
+let actividades = [];
 let colleges  = [];
 
 let editingTaskId     = null;
@@ -1268,7 +1269,7 @@ document.getElementById('college-modal').addEventListener('click', function(e){ 
 });
 
 // ══ REPORTES ══
-const REP_FIELDS = ['rep-college','rep-date','rep-teacher','rep-grade','rep-logros','rep-mejoras','rep-extras'];
+const REP_FIELDS = ['rep-college','rep-date','rep-teacher','rep-grade','rep-logros','rep-mejoras'];
 let _reportSaveTimer = null;
 
 onValue(ref(db, USER_PATH + 'reportes/draft'), snap => {
@@ -1347,7 +1348,6 @@ function buildReport() {
   const grade   = (document.getElementById('rep-grade')?.value   || '').trim();
   const logros  = (document.getElementById('rep-logros')?.value  || '').trim();
   const mejoras = (document.getElementById('rep-mejoras')?.value || '').trim();
-  const extras  = (document.getElementById('rep-extras')?.value  || '').trim();
 
   const fmt = lines => lines.split('\n').filter(l => l.trim()).map(l => `- ${l.trim()}`).join('\n');
 
@@ -1362,7 +1362,9 @@ function buildReport() {
     if (logros)  t += `${fmt(logros)}\n\n`;
   }
   if (mejoras) t += `🚀 Aspectos en Proceso de Mejora\n\n${fmt(mejoras)}\n\n`;
-  if (extras)  t += `${extras}\n\n`;
+  actividades.filter(a => a.active).forEach(a => {
+    t += `${a.title}\n\n${a.body}\n\n`;
+  });
   t += `🗽\nCleveland English Institute\nEmpoderando mentes, transformando futuros.`;
   return t;
 }
@@ -1371,7 +1373,8 @@ function updateReportPreview() {
   const el = document.getElementById('rep-preview');
   if (!el) return;
   const hasContent = REP_FIELDS.filter(id => id !== 'rep-date')
-    .some(id => document.getElementById(id)?.value?.trim());
+    .some(id => document.getElementById(id)?.value?.trim()) ||
+    actividades.some(a => a.active);
   if (!hasContent) {
     el.innerHTML = '<span style="color:var(--text-muted);font-size:13px">Completa el formulario y el reporte aparecerá aquí 🌻</span>';
     return;
@@ -1389,6 +1392,124 @@ function copyReport() {
     setTimeout(() => toast.classList.remove('visible'), 2500);
   });
 }
+
+function resetReport() {
+  if (!confirm('¿Estás segura de que quieres reiniciar el reporte? Se borrará todo el texto actual.')) return;
+  REP_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  updateTeacherSelect();
+  actividades.forEach(a => { a.active = false; a.body = ''; });
+  saveActividades();
+  renderActividades();
+  set(ref(db, USER_PATH + 'reportes/draft'), null);
+  updateReportPreview();
+}
+
+// ══ ACTIVIDADES ESPECIALES ══
+let editingActividadId = null;
+
+onValue(ref(db, USER_PATH + 'reportes/actividades'), snap => {
+  actividades = toArray(snap.val());
+  renderActividades();
+  updateReportPreview();
+});
+
+function saveActividades() {
+  set(ref(db, USER_PATH + 'reportes/actividades'), actividades.length ? actividades : null);
+}
+
+function renderActividades() {
+  const list = document.getElementById('actividades-list');
+  if (!list) return;
+  if (!actividades.length) {
+    list.innerHTML = '<div class="act-empty">Sin actividades aún. Usa "+ Nueva" para crear la primera 🌱</div>';
+    return;
+  }
+  list.innerHTML = actividades.map((a, i) => `
+    <div class="actividad-card${a.active ? ' act-on' : ''}">
+      <div class="act-card-main">
+        <label class="act-toggle-wrap" title="${a.active ? 'Desactivar' : 'Activar'}">
+          <input class="act-toggle-input" type="checkbox" ${a.active ? 'checked' : ''} onchange="toggleActividad(${a.id})" />
+          <span class="act-toggle-track"></span>
+        </label>
+        <div class="act-card-info" onclick="openActividadModal(${a.id})">
+          <div class="act-card-title">${esc(a.title)}</div>
+          <div class="act-card-preview">${esc((a.body||'').substring(0,75))}${(a.body||'').length>75?'…':''}</div>
+        </div>
+        <div class="act-card-actions">
+          <button class="act-move-btn" onclick="moveActividad(${a.id},-1)" ${i===0?'disabled':''} title="Subir"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="2,7 5,3 8,7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="act-move-btn" onclick="moveActividad(${a.id},1)"  ${i===actividades.length-1?'disabled':''} title="Bajar"><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="btn-edit-sm"  onclick="openActividadModal(${a.id})" title="Editar">✏️</button>
+          <button class="teacher-del"  onclick="deleteActividad(${a.id})"    title="Eliminar">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function toggleActividad(id) {
+  const a = actividades.find(a => a.id === id);
+  if (!a) return;
+  a.active = !a.active;
+  saveActividades();
+  renderActividades();
+  updateReportPreview();
+}
+
+function moveActividad(id, dir) {
+  const idx = actividades.findIndex(a => a.id === id);
+  const to  = idx + dir;
+  if (to < 0 || to >= actividades.length) return;
+  [actividades[idx], actividades[to]] = [actividades[to], actividades[idx]];
+  saveActividades();
+  renderActividades();
+  updateReportPreview();
+}
+
+function deleteActividad(id) {
+  if (!confirm('¿Eliminar esta actividad?')) return;
+  actividades = actividades.filter(a => a.id !== id);
+  saveActividades();
+}
+
+function openActividadModal(id) {
+  editingActividadId = id || null;
+  document.getElementById('act-modal-title').textContent = id ? '✏️ Editar actividad' : '✨ Nueva actividad';
+  if (id) {
+    const a = actividades.find(a => a.id === id);
+    document.getElementById('act-modal-name').value = a?.title || '';
+    document.getElementById('act-modal-body').value = a?.body  || '';
+  } else {
+    document.getElementById('act-modal-name').value = '';
+    document.getElementById('act-modal-body').value = '';
+  }
+  document.getElementById('act-modal').classList.add('active');
+  document.getElementById('act-modal-name').focus();
+}
+
+function closeActividadModal() {
+  document.getElementById('act-modal').classList.remove('active');
+  editingActividadId = null;
+}
+
+function saveActividadModal() {
+  const title = document.getElementById('act-modal-name').value.trim();
+  const body  = document.getElementById('act-modal-body').value.trim();
+  if (!title) { alert('Escribe el nombre de la actividad'); return; }
+  if (editingActividadId) {
+    const a = actividades.find(a => a.id === editingActividadId);
+    if (a) { a.title = title; a.body = body; }
+  } else {
+    actividades.push({ id: Date.now(), title, body, active: true });
+  }
+  saveActividades();
+  closeActividadModal();
+}
+
+document.getElementById('act-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeActividadModal();
+});
 
 // ══ CERRAR SESIÓN ══
 function logout() {
@@ -1431,7 +1552,8 @@ Object.assign(window, {
   closeModal, openVisitModal, openEditVisitModal, saveVisit, deleteVisit, toggleVisitDone,
   openEvalModal, openEditEvalModal, saveEval, deleteEval,
   addCollegeTodo, toggleCollegeTodo, deleteCollegeTodo,
-  onReportInput, copyReport, updateTeacherSelect,
+  onReportInput, copyReport, updateTeacherSelect, resetReport,
+  toggleActividad, moveActividad, deleteActividad, openActividadModal, closeActividadModal, saveActividadModal,
   restoreTask, permDeleteTask, restoreNote, permDeleteNote,
   restoreCollege, permDeleteCollege, restoreTeacher, permDeleteTeacher,
   restoreVisit, permDeleteVisit, restoreEval, permDeleteEval,

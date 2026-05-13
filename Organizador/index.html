@@ -458,6 +458,10 @@
         <div class="page-title">Reportes 📋</div>
         <div class="page-subtitle">Genera reportes de visita para WhatsApp</div>
       </div>
+      <button class="btn btn-reset" onclick="resetReport()">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 2.5v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 6.5A6 6 0 1 0 10.5 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Reiniciar
+      </button>
     </div>
     <div class="reports-layout">
       <!-- Formulario -->
@@ -492,8 +496,11 @@
             <textarea class="rep-textarea" id="rep-mejoras" placeholder="Motivar al alumno a responder en Inglés." oninput="onReportInput()"></textarea>
           </div>
           <div class="form-field form-full">
-            <label>📎 Actividades especiales</label>
-            <textarea class="rep-textarea" id="rep-extras" placeholder="🐝 Spelling Bee — Se realizaron sesiones...&#10;🏅 Cleveland Games — Preliminar con 1ero B..." oninput="onReportInput()"></textarea>
+            <div class="act-section-header">
+              <label style="margin:0">📎 Actividades especiales</label>
+              <button class="btn btn-primary" style="font-size:11px;padding:5px 13px" onclick="openActividadModal()">+ Nueva</button>
+            </div>
+            <div id="actividades-list" class="actividades-list"></div>
           </div>
         </div>
       </div>
@@ -688,6 +695,25 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('eval-modal')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveEval()">Guardar ficha</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Actividad especial -->
+<div class="modal-overlay" id="act-modal">
+  <div class="modal modal-sm">
+    <div class="modal-title" id="act-modal-title">✨ Nueva actividad</div>
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Nombre</label>
+      <input type="text" id="act-modal-name" placeholder="Ej: 🐝 Prácticas del Spelling Bee" />
+    </div>
+    <div class="form-field" style="margin-bottom:12px">
+      <label>Texto del reporte</label>
+      <textarea id="act-modal-body" placeholder="Describe la actividad tal como aparecerá en WhatsApp..." style="min-height:130px"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeActividadModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveActividadModal()">Guardar</button>
     </div>
   </div>
 </div>

@@ -363,6 +363,8 @@
   .btn-ghost:hover { background: var(--surface2); color: var(--text); }
   .btn-red { background: var(--trash-light); color: var(--trash-color); border: none; font-weight: 600; }
   .btn-red:hover { opacity: 0.85; }
+  .btn-reset { background: var(--trash-light); color: var(--trash-color); border: 1.5px solid var(--trash-color); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 7px 15px; transition: background 0.2s, color 0.2s, transform 0.15s; }
+  .btn-reset:hover { background: var(--trash-color); color: #fff; transform: translateY(-1px); }
   .btn-danger { background: var(--trash-color); color: white; border: none; }
   .btn-danger:hover { opacity: 0.85; }
 
@@ -1150,6 +1152,28 @@
   .report-copy-btn { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .copy-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--green); color: #fff; padding: 10px 24px; border-radius: 50px; font-size: 13px; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity 0.28s ease, transform 0.28s ease; z-index: 9998; box-shadow: 0 4px 20px rgba(0,0,0,0.18); white-space: nowrap; }
   .copy-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Actividades especiales ── */
+  .act-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .actividades-list   { display: flex; flex-direction: column; gap: 7px; min-height: 36px; }
+  .act-empty { font-size: 12px; color: var(--text-muted); font-weight: 600; padding: 14px 0; text-align: center; }
+  .actividad-card { border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); padding: 9px 11px; transition: border-color 0.2s, background 0.2s; }
+  .actividad-card.act-on { border-color: var(--green); background: var(--green-light); }
+  .act-card-main  { display: flex; align-items: center; gap: 9px; }
+  .act-card-info  { flex: 1; min-width: 0; cursor: pointer; }
+  .act-card-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .act-card-preview { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .act-card-actions { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  .act-move-btn { background: var(--bg); border: 1.5px solid var(--border); border-radius: 50%; color: var(--text-muted); width: 30px; height: 30px; min-width: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.18s, border-color 0.18s, color 0.18s; padding: 0; }
+  .act-move-btn:hover:not(:disabled) { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+  .act-move-btn:disabled { opacity: 0.25; cursor: default; }
+  /* Toggle switch para actividades */
+  .act-toggle-wrap  { position: relative; display: inline-flex; width: 34px; height: 20px; flex-shrink: 0; cursor: pointer; }
+  .act-toggle-input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .act-toggle-track { position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: background 0.2s; }
+  .act-toggle-track::after { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
+  .act-toggle-input:checked + .act-toggle-track { background: var(--green); }
+  .act-toggle-input:checked + .act-toggle-track::after { transform: translateX(14px); }
 
 /* ══ RESPONSIVE — MÓVIL ══ */
 @media (max-width: 768px) {
