@@ -1,5 +1,5 @@
 import { db } from './firebase-config.js';
-import { ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { ref, set, remove, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 // ══ SESIÓN ══
 const _orgUser = sessionStorage.getItem('orgUser');
@@ -55,26 +55,35 @@ function saveColleges() {
   set(ref(db, USER_PATH + 'colleges'), obj);
 }
 
+// ══ NAVEGACIÓN — estado activo ══
+let currentView = 'dashboard';
+const _unsub = {};
+let calInitialized = false;
+
 // ══ LISTENERS EN TIEMPO REAL ══
-onValue(ref(db, USER_PATH + 'tasks'), snap => {
+_unsub.tasks = onValue(ref(db, USER_PATH + 'tasks'), snap => {
   tasks = snap.val() ? Object.values(snap.val()) : [];
-  renderTasks(); renderDashboard(); renderCalendar();
+  if (currentView === 'tasks')     renderTasks();
+  if (currentView === 'dashboard') renderDashboard();
+  if (currentView === 'calendar')  renderCalendar();
 });
 
-onValue(ref(db, USER_PATH + 'notes'), snap => {
+_unsub.notes = onValue(ref(db, USER_PATH + 'notes'), snap => {
   notes = snap.val()
     ? Object.values(snap.val()).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
     : [];
-  renderNotes();
+  if (currentView === 'notes') renderNotes();
 });
 
-onValue(ref(db, USER_PATH + 'reminders'), snap => {
+_unsub.reminders = onValue(ref(db, USER_PATH + 'reminders'), snap => {
   reminders = snap.val() || {};
-  renderCalendar();
-  if (selectedCalDay) renderDayReminders(selectedCalDay);
+  if (currentView === 'calendar') {
+    renderCalendar();
+    if (selectedCalDay) renderDayReminders(selectedCalDay);
+  }
 });
 
-onValue(ref(db, USER_PATH + 'trash'), snap => {
+_unsub.trash = onValue(ref(db, USER_PATH + 'trash'), snap => {
   const v = snap.val() || {};
   trash = {
     tasks:     toArray(v.tasks),
@@ -87,10 +96,10 @@ onValue(ref(db, USER_PATH + 'trash'), snap => {
     reminders: toArray(v.reminders),
   };
   updateTrashBadge();
-  renderTrash();
+  if (currentView === 'trash') renderTrash();
 });
 
-onValue(ref(db, USER_PATH + 'colleges'), snap => {
+_unsub.colleges = onValue(ref(db, USER_PATH + 'colleges'), snap => {
   const v = snap.val();
   colleges = v ? Object.values(v).map(c => ({
     ...c,
@@ -99,12 +108,13 @@ onValue(ref(db, USER_PATH + 'colleges'), snap => {
     evaluations: toArray(c.evaluations),
     todos:       toArray(c.todos),
   })) : [];
-  renderColleges();
-  renderCalendar();
-  populateCollegeSelect();
-  if (currentCollegeId) {
-    renderTeachers(); renderVisits(); renderEvals(); renderCollegeTodos();
+  if (currentView === 'colleges') {
+    renderColleges();
+    populateCollegeSelect();
+    if (currentCollegeId) { renderTeachers(); renderVisits(); renderEvals(); renderCollegeTodos(); }
   }
+  if (currentView === 'calendar') renderCalendar();
+  if (currentView === 'reportes') { populateCollegeSelect(); updateTeacherSelect(); }
 });
 
 // ══ UTILIDADES ══
@@ -146,6 +156,7 @@ if (localStorage.getItem('flow_dark') === '1') document.body.classList.add('dark
 // ══ NAVEGACIÓN ══
 const NAV_VIEWS = ['dashboard','tasks','calendar','notes','colleges','reportes','trash'];
 function showView(id) {
+  currentView = id;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('view-'+id).classList.add('active');
@@ -153,11 +164,11 @@ function showView(id) {
   document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
   if (id==='dashboard') renderDashboard();
   if (id==='tasks')     renderTasks();
-  if (id==='calendar')  renderCalendar();
+  if (id==='calendar')  { calInitialized = true; cleanOrphanVisits(); renderCalendar(); }
   if (id==='notes')     renderNotes();
   if (id==='trash')     renderTrash();
   if (id==='colleges')  renderColleges();
-  if (id==='reportes')  { populateCollegeSelect(); updateTeacherSelect(); updateReportPreview(); }
+  if (id==='reportes')  { populateCollegeSelect(); updateTeacherSelect(); renderActividades(); updateReportPreview(); }
 }
 
 // ══ DASHBOARD ══
@@ -315,6 +326,16 @@ function closeTaskModal() {
 }
 
 // ══ CALENDARIO ══
+function cleanOrphanVisits() {
+  const activeIds = new Set(colleges.map(c => c.id));
+  const trashIds  = new Set((trash.colleges||[]).map(c => c.id));
+  const before    = (trash.visits||[]).length;
+  trash.visits = (trash.visits||[]).filter(v =>
+    activeIds.has(v.collegeId) || trashIds.has(v.collegeId)
+  );
+  if (trash.visits.length !== before) fbSaveTrash();
+}
+
 const MNAMES    = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MNAMES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
@@ -785,6 +806,10 @@ function restoreCollege(id) {
 }
 function permDeleteCollege(id) {
   if (!confirm('¿Eliminar este colegio permanentemente? Esta acción no se puede deshacer.')) return;
+  // Cascade: purge orphaned sub-items in trash that reference this college
+  ['visits','teachers','evals','todos'].forEach(type => {
+    trash[type] = (trash[type]||[]).filter(item => item.collegeId !== id);
+  });
   trash.colleges = (trash.colleges||[]).filter(c=>c.id!==id);
   fbSaveTrash();
 }
@@ -874,8 +899,9 @@ function permDeleteReminder(deletedAt) {
 }
 function emptyTrash() {
   if (!confirm('¿Vaciar toda la papelera? Todos los elementos se eliminarán permanentemente y no podrás recuperarlos.')) return;
-  trash = { tasks: [], notes: [], colleges: [], teachers: [], visits: [], evals: [], todos: [], reminders: [] };
-  fbSaveTrash();
+  update(ref(db, '/'), { [USER_PATH + 'trash']: null })
+    .then(() => { if (currentView === 'calendar') renderCalendar(); })
+    .catch(err => { alert('Error al vaciar la papelera. Inténtalo de nuevo.'); console.error(err); });
 }
 
 // Cerrar modales al clic fuera
@@ -998,9 +1024,16 @@ function deleteCollege(id) {
   if (!confirm('¿Mover este colegio a la papelera?')) return;
   const c = colleges.find(c => c.id === id);
   if (!c) return;
+  // Remove sub-items in trash that already reference this college (they travel with it)
+  ['visits','teachers','evals','todos'].forEach(type => {
+    trash[type] = (trash[type]||[]).filter(item => item.collegeId !== id);
+  });
   sendToTrash('colleges', c);
-  fbRemoveCollege(id);
-  fbSaveTrash();
+  // Atomic: remove from active colleges + persist updated trash in a single write
+  update(ref(db, '/'), {
+    [USER_PATH + 'colleges/' + id]: null,
+    [USER_PATH + 'trash']: trash
+  }).catch(err => console.error('Error al mover colegio a papelera:', err));
 }
 
 // Teachers
@@ -1272,7 +1305,7 @@ document.getElementById('college-modal').addEventListener('click', function(e){ 
 const REP_FIELDS = ['rep-college','rep-date','rep-teacher','rep-grade','rep-logros','rep-mejoras'];
 let _reportSaveTimer = null;
 
-onValue(ref(db, USER_PATH + 'reportes/draft'), snap => {
+_unsub.repDraft = onValue(ref(db, USER_PATH + 'reportes/draft'), snap => {
   const d = snap.val();
   if (!d) return;
   REP_FIELDS.filter(id => id !== 'rep-teacher').forEach(id => {
@@ -1284,7 +1317,7 @@ onValue(ref(db, USER_PATH + 'reportes/draft'), snap => {
     const sel = document.getElementById('rep-teacher');
     if (sel) sel.value = d['rep-teacher'];
   }
-  updateReportPreview();
+  if (currentView === 'reportes') updateReportPreview();
 });
 
 function onReportInput() {
@@ -1410,10 +1443,9 @@ function resetReport() {
 // ══ ACTIVIDADES ESPECIALES ══
 let editingActividadId = null;
 
-onValue(ref(db, USER_PATH + 'reportes/actividades'), snap => {
+_unsub.repActs = onValue(ref(db, USER_PATH + 'reportes/actividades'), snap => {
   actividades = toArray(snap.val());
-  renderActividades();
-  updateReportPreview();
+  if (currentView === 'reportes') { renderActividades(); updateReportPreview(); }
 });
 
 function saveActividades() {
@@ -1534,7 +1566,10 @@ document.getElementById('sidebar-overlay').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.remove('sidebar-active');
 });
 document.querySelectorAll('.sidebar .nav-item').forEach(item => {
-  item.addEventListener('click', () => {
+  item.addEventListener('pointerdown', () => {
+    if (item.classList.contains('logout-btn')) return;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
     document.querySelector('.sidebar').classList.remove('sidebar-active');
   });
 });
