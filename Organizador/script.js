@@ -1308,6 +1308,9 @@ let _reportSaveTimer = null;
 _unsub.repDraft = onValue(ref(db, USER_PATH + 'reportes/draft'), snap => {
   const d = snap.val();
   if (!d) return;
+  // Only hydrate fields and trigger select/preview when there is real content to load
+  const hasContent = REP_FIELDS.some(id => d[id]);
+  if (!hasContent) return;
   REP_FIELDS.filter(id => id !== 'rep-teacher').forEach(id => {
     const el = document.getElementById(id);
     if (el && d[id]) el.value = d[id];
@@ -1428,15 +1431,29 @@ function copyReport() {
 
 function resetReport() {
   if (!confirm('¿Estás segura de que quieres reiniciar el reporte? Se borrará todo el texto actual.')) return;
+
+  // Block auto-save: cancel any pending timer before touching the fields
+  clearTimeout(_reportSaveTimer);
+  _reportSaveTimer = null;
+
   REP_FIELDS.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+
+  // updateTeacherSelect calls onReportInput internally, which schedules a new 900ms timer.
+  // Cancel it immediately after so no empty-object write races against the null delete below.
   updateTeacherSelect();
+  clearTimeout(_reportSaveTimer);
+  _reportSaveTimer = null;
+
   actividades.forEach(a => { a.active = false; a.body = ''; });
   saveActividades();
   renderActividades();
+
+  // This write takes priority — runs uncontested because both timers above are cancelled.
   set(ref(db, USER_PATH + 'reportes/draft'), null);
+
   updateReportPreview();
 }
 
