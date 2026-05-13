@@ -96,6 +96,7 @@ onValue(ref(db, USER_PATH + 'colleges'), snap => {
     todos:       toArray(c.todos),
   })) : [];
   renderColleges();
+  renderCalendar();
   if (currentCollegeId) {
     renderTeachers(); renderVisits(); renderEvals(); renderCollegeTodos();
   }
@@ -323,6 +324,15 @@ function renderCalendar() {
   const taskDates     = new Set(tasks.filter(t=>t.date).map(t=>t.date));
   const reminderDates = new Set(Object.keys(reminders).filter(k=>reminders[k]?.length));
 
+  const visitDatesMap = {};
+  colleges.forEach(c => {
+    (c.visits || []).forEach(v => {
+      if (!v.date) return;
+      if (!visitDatesMap[v.date]) visitDatesMap[v.date] = [];
+      visitDatesMap[v.date].push({ purpose: v.purpose, collegeName: c.name });
+    });
+  });
+
   const container = document.getElementById('cal-days');
   container.innerHTML = '';
 
@@ -349,10 +359,11 @@ function renderCalendar() {
 
     el.textContent = cell.day;
 
-    if (dateStr && (taskDates.has(dateStr)||reminderDates.has(dateStr))) {
+    if (dateStr && (taskDates.has(dateStr)||reminderDates.has(dateStr)||visitDatesMap[dateStr])) {
       const row = document.createElement('div'); row.className='dot-row';
       if (taskDates.has(dateStr))     { const d=document.createElement('div'); d.className='dot dot-task';     row.appendChild(d); }
       if (reminderDates.has(dateStr)) { const d=document.createElement('div'); d.className='dot dot-reminder'; row.appendChild(d); }
+      if (visitDatesMap[dateStr])     { const d=document.createElement('div'); d.className='dot dot-visit';    row.appendChild(d); }
       el.appendChild(row);
     }
     container.appendChild(el);
@@ -376,8 +387,30 @@ function selectDay(dateStr,day) {
     ? dayTasks.map(t=>`<div class="day-task-item" onclick="openTaskModal(${t.id})"><div class="day-dot" style="background:${dotColors[t.status]}"></div><span style="flex:1">${esc(t.title)}</span><span class="task-tag ${pClass(t.priority)}" style="font-size:10px">${t.priority}</span></div>`).join('')
     : '<div style="font-size:13px;color:var(--text-muted);padding:6px 0;font-weight:600">Sin tareas este día 🌿</div>';
 
+  renderDayVisits(dateStr);
   renderDayReminders(dateStr);
   renderCalendar();
+}
+
+function renderDayVisits(dateStr) {
+  const visitList = [];
+  colleges.forEach(c => {
+    (c.visits || []).forEach(v => {
+      if (v.date === dateStr) visitList.push({ purpose: v.purpose, collegeName: c.name });
+    });
+  });
+  const section = document.getElementById('day-visits-section');
+  const container = document.getElementById('day-panel-visits');
+  section.style.display = visitList.length ? '' : 'none';
+  container.innerHTML = visitList.map(v =>
+    `<div class="day-task-item">
+       <div class="day-dot" style="background:var(--pink)"></div>
+       <div style="flex:1">
+         <div style="font-weight:600;font-size:13px">${esc(v.purpose)}</div>
+         <div style="font-size:11px;color:var(--text-muted)">${esc(v.collegeName)}</div>
+       </div>
+     </div>`
+  ).join('');
 }
 
 function renderDayReminders(dateStr) {
@@ -1031,16 +1064,24 @@ function renderVisits() {
   const sorted = [...c.visits].sort((a,b) => a.date < b.date ? 1 : -1);
   if (!sorted.length) { list.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
-  list.innerHTML = sorted.map((v,i) => `
-    <div class="visit-item">
-      <div class="visit-date">📅 ${fmtDate(v.date)}</div>
-      <div class="visit-purpose">${esc(v.purpose)}</div>
-      ${v.notes ? `<div class="visit-notes">${esc(v.notes)}</div>` : ''}
-      <div style="margin-top:8px;display:flex;gap:6px">
-        <button class="btn-edit-sm" onclick="openEditVisitModal(${c.visits.indexOf(v)})" title="Editar">✏️ Editar</button>
-        <button class="teacher-del" onclick="deleteVisit(${c.visits.indexOf(v)})" title="Eliminar">✕ Eliminar</button>
+  list.innerHTML = sorted.map(v => {
+    const origIdx = c.visits.indexOf(v);
+    return `
+    <div class="visit-item${v.completada ? ' completada' : ''}">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <input class="visit-cb" type="checkbox" ${v.completada ? 'checked' : ''} onchange="toggleVisitDone(${origIdx})" />
+        <div style="flex:1">
+          <div class="visit-date">📅 ${fmtDate(v.date)}</div>
+          <div class="visit-purpose${v.completada ? ' done' : ''}">${esc(v.purpose)}</div>
+          ${v.notes ? `<div class="visit-notes">${esc(v.notes)}</div>` : ''}
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button class="btn-edit-sm" onclick="openEditVisitModal(${origIdx})" title="Editar">✏️ Editar</button>
+            <button class="teacher-del" onclick="deleteVisit(${origIdx})" title="Eliminar">✕ Eliminar</button>
+          </div>
+        </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 let editingVisitIdx = null;
 function openVisitModal() {
@@ -1074,6 +1115,13 @@ function saveVisit() {
   editingVisitIdx = null;
   renderVisits();
 }
+function toggleVisitDone(idx) {
+  const c = currentCollege();
+  c.visits[idx].completada = !c.visits[idx].completada;
+  fbSetCollege(c.id, c);
+  renderVisits();
+}
+
 function deleteVisit(idx) {
   const c = currentCollege();
   sendToTrash('visits', { ...c.visits[idx], collegeId: c.id, collegeName: c.name });
@@ -1252,7 +1300,7 @@ Object.assign(window, {
   openCollegeModal, openEditCollegeModal, closeCollegeModal, saveCollege, deleteCollege,
   viewCollege, backToColleges, switchCollegeTab,
   openTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
-  closeModal, openVisitModal, openEditVisitModal, saveVisit, deleteVisit,
+  closeModal, openVisitModal, openEditVisitModal, saveVisit, deleteVisit, toggleVisitDone,
   openEvalModal, openEditEvalModal, saveEval, deleteEval,
   addCollegeTodo, toggleCollegeTodo, deleteCollegeTodo,
   restoreTask, permDeleteTask, restoreNote, permDeleteNote,

@@ -1,7 +1,7 @@
 Quiro sabeer como puedo optimizar el siguiente flujo de trabajo con claude code para gastar menos tokens, cabe destacar que yo estaba usando claude desde el navegador y ahora con claude code directamente en mi ordenador quiero optimizar el flujo de trabajo:
 
 
-Estoy haciendo el siguiente organizador basado en google keep usando como herramienta principal de contrucion cluade y claude code. necesito que me ayudes hacer modificaciones, cambios, aclarar dudas de como implementar ideas en el mismoy dar intrucciones clarar y precisas para claude code para gastar menos tokens:
+Estoy haciendo el siguiente organizador basado en google keep usando como herramienta principal de contrucion cluade y claude code. necesito que me ayudes hacer modificaciones, cambios, aclarar dudas de como implementar ideas en el mismo y dar intrucciones clarar y precisas para claude code para gastar menos tokens:
 
 vamos a lo mas importante como puedo hacer que ella pueda abrir este organizador que he estado preparando en su laptop y telefono y que la informacion sea la misma y que yo pueda hacer cambios que ella me vaya pidiendo haciendoles commit desde git hub?
 

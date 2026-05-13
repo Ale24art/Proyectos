@@ -605,6 +605,7 @@
   .cal-day.today .dot { background: rgba(255,255,255,0.85) !important; }
   .dot-task { background: var(--accent2); }
   .dot-reminder { background: var(--blue); }
+  .dot-visit    { background: var(--pink); }
 
   /* ── DAY PANEL ── */
   .day-panel {
@@ -1047,9 +1048,14 @@
   .teacher-del:hover { background: var(--trash-light); color: var(--trash-color); }
   .visit-item { padding: 16px 18px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 9px; border-left: 4px solid var(--blue); transition: all 0.2s; }
   .visit-item:hover { transform: translateX(2px); box-shadow: var(--shadow); }
+  .visit-item.completada { opacity: 0.55; border-left-color: var(--border); }
   .visit-date { font-size: 11px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
   .visit-purpose { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .visit-purpose.done { text-decoration: line-through; color: var(--text-muted); }
   .visit-notes { font-size: 12px; color: var(--text-muted); font-weight: 500; line-height: 1.5; }
+  .visit-cb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--blue); cursor: pointer; flex-shrink: 0; position: relative; transition: background 0.2s, border-color 0.2s; margin-top: 2px; }
+  .visit-cb:checked { background: var(--blue); border-color: var(--blue); }
+  .visit-cb:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px; border: 2px solid #fff; border-left: none; border-top: none; transform: rotate(45deg); }
   .eval-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 22px 26px; margin-bottom: 14px; box-shadow: var(--shadow); position: relative; overflow: hidden; transition: box-shadow 0.2s; }
   .eval-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, var(--accent), var(--pink)); }
   .eval-card:hover { box-shadow: var(--shadow-md); }
