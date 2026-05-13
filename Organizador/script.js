@@ -10,6 +10,9 @@ if (!_orgUser) {
 const USER_PATH = _orgUser + '/';
 const USER_NAME  = _orgUser === 'dreha' ? 'Andrea' : 'Ale';
 
+const _loader = document.getElementById('app-loader');
+if (_loader) _loader.style.display = 'none';
+
 // ══ ESTADO LOCAL ══
 let tasks     = [];
 let notes     = [];
