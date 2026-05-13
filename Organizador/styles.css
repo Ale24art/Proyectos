@@ -1177,39 +1177,35 @@
 
 /* ══ RESPONSIVE — MÓVIL ══ */
 @media (max-width: 768px) {
+
+  /* ─── 1. SIDEBAR COLAPSABLE (hamburguesa) ─── */
   .sidebar {
     display: flex;
+    width: min(var(--sidebar-w), 82vw);
     left: -100%;
     transition: left 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     z-index: 20;
   }
-  .sidebar.sidebar-active {
-    left: 0;
-  }
-  .sidebar.sidebar-active ~ #sidebar-overlay {
-    display: block;
-    opacity: 1;
-  }
+  .sidebar.sidebar-active { left: 0; }
+  .sidebar.sidebar-active ~ #sidebar-overlay { display: block; opacity: 1; }
 
+  /* ─── 2. CONTENEDOR PRINCIPAL 100% ANCHO ─── */
   .main {
     margin-left: 0;
     width: 100%;
-    padding: 20px 16px;
-    padding-top: 64px;
+    padding: 14px 12px;   /* -30% vs desktop 28px/38px */
+    padding-top: 60px;
   }
 
-  .notes-grid {
-    columns: 1;
-  }
-
+  /* ─── HAMBURGUESA ─── */
   .hamburger {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 5px;
     position: fixed;
-    top: 14px;
-    left: 14px;
+    top: 12px;
+    left: 12px;
     z-index: 30;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1226,46 +1222,77 @@
     border-radius: 2px;
     transition: background 0.2s;
   }
-  .hamburger:hover span {
-    background: var(--accent);
+  .hamburger:hover span { background: var(--accent); }
+
+  /* ─── PAGE HEADER ─── */
+  .page-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .page-title { font-size: 22px; }
+
+  /* ─── 3. DASHBOARD — 1 SOLA COLUMNA ─── */
+  /* Stats: 1 columna */
+  .stats-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  /* Paneles Alta prioridad / En proceso → apilados */
+  #view-dashboard > div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
   }
 
-  /* 1. Banner de bienvenida */
+  /* ─── 4. REDUCCIÓN DE MÁRGENES Y RELLENOS ~30% ─── */
+  .stat-card    { padding: 14px 15px; }
+  .task-column  { padding: 12px 13px; }
+  .day-panel    { padding: 16px; }
+  .note-card    { padding: 14px; }
+  .report-card  { padding: 15px 16px; }
+  .college-card { padding: 14px 16px; }
+  .modal        { padding: 20px 16px; max-width: 96vw; }
+
+  /* ─── FORMULARIOS ─── */
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .form-topbar { flex-wrap: wrap; }
+
+  /* ─── NOTAS ─── */
+  .notes-grid { columns: 1; }
+
+  /* ─── COLEGIOS ─── */
+  .colleges-grid { grid-template-columns: 1fr; }
+  .college-tabs  {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    gap: 6px;
+  }
+  .college-tab { white-space: nowrap; flex-shrink: 0; font-size: 12px; padding: 7px 12px; }
+  .college-card-stats { gap: 10px; }
+
+  /* ─── CALENDARIO ─── */
+  .calendar-layout { grid-template-columns: 1fr; }
+  .cal-wrap, .day-panel { width: 100%; margin-left: 0; margin-right: 0; }
+
+  /* ─── TAREAS ─── */
+  .tasks-columns { grid-template-columns: 1fr; }
+
+  /* ─── BANNER BIENVENIDA ─── */
   .welcome-strip {
     flex-wrap: wrap;
     justify-content: center;
-    padding: 18px 20px;
-    gap: 10px;
+    padding: 13px 14px;
+    gap: 8px;
   }
-  .welcome-animals {
-    width: 100%;
-    text-align: center;
-  }
-  .welcome-strip::before {
-    display: none;
-  }
+  .welcome-animals { width: 100%; text-align: center; }
+  .welcome-strip::before { display: none; }
 
-  /* 2. Tarjetas de estadísticas → 2 columnas */
-  .stats-row {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  /* 3. Columnas de tareas → apiladas */
-  .tasks-columns {
-    grid-template-columns: 1fr;
-  }
-
-  /* 4. Calendario → ancho completo */
-  .calendar-layout {
-    grid-template-columns: 1fr;
-  }
-  .cal-wrap,
-  .day-panel {
-    width: 100%;
-    margin-left: 0;
-    margin-right: 0;
-  }
-
-  /* 5. Reportes → apilado */
+  /* ─── REPORTES ─── */
   .reports-layout { grid-template-columns: 1fr; }
+
+  /* ─── PAPELERA ─── */
+  .trash-card { flex-wrap: wrap; gap: 8px; }
+  .trash-card-actions { width: 100%; justify-content: flex-end; }
 }
