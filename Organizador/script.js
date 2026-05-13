@@ -164,7 +164,7 @@ function showView(id) {
   document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
   if (id==='dashboard') renderDashboard();
   if (id==='tasks')     renderTasks();
-  if (id==='calendar')  { calInitialized = true; cleanOrphanVisits(); renderCalendar(); }
+  if (id==='calendar')  { calInitialized = true; cleanOrphanVisits(); renderCalendar(); setTimeout(() => window.dispatchEvent(new Event('resize')), 220); }
   if (id==='notes')     renderNotes();
   if (id==='trash')     renderTrash();
   if (id==='colleges')  renderColleges();
@@ -1566,11 +1566,14 @@ document.getElementById('sidebar-overlay').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.remove('sidebar-active');
 });
 document.querySelectorAll('.sidebar .nav-item').forEach(item => {
-  item.addEventListener('pointerdown', () => {
+  item.addEventListener('pointerdown', e => {
     if (item.classList.contains('logout-btn')) return;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     item.classList.add('active');
     document.querySelector('.sidebar').classList.remove('sidebar-active');
+    // Call showView immediately on pointerdown — don't wait for click (touch may not fire it)
+    const m = (item.getAttribute('onclick') || '').match(/showView\('(\w+)'\)/);
+    if (m) showView(m[1]);
   });
 });
 

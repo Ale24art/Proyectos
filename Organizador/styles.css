@@ -149,6 +149,8 @@
     line-height: 1;
     display: flex;
     align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
     gap: 4px;
     background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 60%, var(--pink) 100%);
     -webkit-background-clip: text;
@@ -1141,6 +1143,7 @@
   z-index: 15;
   opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 /* ══ REPORTES ══ */
@@ -1187,9 +1190,11 @@
     transition: transform 0.2s cubic-bezier(0,0,0.2,1);
     will-change: transform;
     z-index: 20;
+    user-select: none;
+    -webkit-user-select: none;
   }
   .sidebar.sidebar-active { transform: translateX(0); }
-  .sidebar.sidebar-active ~ #sidebar-overlay { display: block; opacity: 1; }
+  .sidebar.sidebar-active ~ #sidebar-overlay { display: block; opacity: 1; pointer-events: auto; }
 
   /* ─── 2. CONTENEDOR PRINCIPAL 100% ANCHO ─── */
   .main {
@@ -1215,6 +1220,8 @@
     padding: 9px 11px;
     cursor: pointer;
     box-shadow: var(--shadow);
+    touch-action: manipulation;
+    pointer-events: auto;
   }
   .hamburger span {
     display: block;
