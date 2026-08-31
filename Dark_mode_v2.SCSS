@@ -1,0 +1,481 @@
+/* =========================================================
+   MODO OSCURO v2 - Compatible con tema Moove (Moodle 5.0.6)
+   Pegar este código en:
+   Administración del sitio > Apariencia > Moove > "SCSS sin modificar"
+   (reemplaza completamente lo que hayas pegado antes)
+   ========================================================= */
+
+:root {
+  /* Paleta actualizada según referencia de diseño */
+  --dm-bg-sidebar: #090B10;   /* Fondo del panel lateral / superficie más profunda */
+  --dm-bg: #0E131E;           /* Fondo de la zona principal de contenido */
+  --dm-bg-card: #131926;      /* Tarjetas y contenedores internos */
+  --dm-bg-elevated: #1B2232;  /* Campos de búsqueda, botones secundarios, ítems de menú */
+  --dm-border: #283248;       /* Bordes y líneas divisorias */
+  --dm-icon-bg: #3A4863;      /* Botones circulares pequeños / iconos secundarios */
+  --dm-text: #e8e9ea;
+  --dm-text-muted: #b4b7bb;
+  --dm-primary: #a3cf1f; /* ajusta al acento real de tu marca */
+  --dm-link: #8fd3ff;
+}
+
+/* Salvaguarda: la página de login nunca debe oscurecerse (tiene imagen de fondo propia) */
+body.pagelayout-login.dark-mode {
+  background: none !important;
+  background-color: transparent !important;
+}
+body.pagelayout-login.dark-mode #page,
+body.pagelayout-login.dark-mode #page-content,
+body.pagelayout-login.dark-mode .card {
+  background-color: initial !important;
+  color: initial !important;
+}
+
+/* ---------- Base ---------- */
+body.dark-mode {
+  background-color: var(--dm-bg) !important;
+  color: var(--dm-text) !important;
+}
+
+body.dark-mode #page,
+body.dark-mode #page-content,
+body.dark-mode #region-main,
+body.dark-mode #region-main-box,
+body.dark-mode #region-main-settings-menu,
+body.dark-mode #topofscroll,
+body.dark-mode .main-inner,
+body.dark-mode .drawer-content-container,
+body.dark-mode .container-fluid,
+body.dark-mode .tertiary-navigation,
+body.dark-mode .course-content-item,
+body.dark-mode [id^="inst"] {
+  background-color: var(--dm-bg) !important;
+  color: var(--dm-text) !important;
+}
+
+/* Pestañas: estado normal transparente, hover azul de acento, activa con fondo sólido */
+body.dark-mode .nav-tabs .nav-link,
+body.dark-mode .nav-pills .nav-link {
+  background-color: transparent !important;
+  color: var(--dm-text-muted) !important;
+  border-color: transparent !important;
+}
+
+body.dark-mode .nav-tabs .nav-link:hover,
+body.dark-mode .nav-pills .nav-link:hover {
+  background-color: rgba(85, 160, 220, 0.22) !important;
+  color: var(--dm-text) !important;
+}
+
+body.dark-mode .nav-tabs .nav-link.active,
+body.dark-mode .nav-tabs .nav-item.show .nav-link {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* Hover genérico: enlaces, ítems de lista, dropdowns, paginación -> azul, no blanco */
+body.dark-mode a:hover,
+body.dark-mode .dropdown-item:hover,
+body.dark-mode .list-group-item:hover,
+body.dark-mode .list-group-item-action:hover,
+body.dark-mode .page-link:hover {
+  background-color: rgba(85, 160, 220, 0.22) !important;
+  color: var(--dm-text) !important;
+}
+
+/* Botones dentro del menú "Añadir contenido" de una sección
+   (p. ej. "Actividad o recurso", que usa <button> en vez de <a>) */
+body.dark-mode .dropdown-menu button,
+body.dark-mode .dropdown-menu .dropdown-item,
+body.dark-mode .section-modchooser,
+body.dark-mode .section-modchooser-link {
+  background-color: transparent !important;
+  color: var(--dm-text) !important;
+}
+
+body.dark-mode .dropdown-menu button:hover,
+body.dark-mode .section-modchooser:hover,
+body.dark-mode .section-modchooser-link:hover {
+  background-color: rgba(85, 160, 220, 0.22) !important;
+}
+
+/* Repetido a propósito DESPUÉS del bloque anterior: como .dropdown-item
+   también recibe background transparente arriba, esta regla de hover debe
+   ir después para ganar por orden de aparición (misma especificidad). */
+body.dark-mode .dropdown-item:hover {
+  background-color: rgba(85, 160, 220, 0.22) !important;
+  color: var(--dm-text) !important;
+}
+
+/* Drawer de mensajes/contactos (barra lateral derecha) */
+body.dark-mode .message-app,
+body.dark-mode [data-region^="view-"],
+body.dark-mode [id^="message-drawer"],
+body.dark-mode .contacts-list,
+body.dark-mode .list-group,
+body.dark-mode .list-group-item,
+body.dark-mode .search-input-container,
+body.dark-mode .footer-container,
+body.dark-mode .view-overview-body {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* Botón circular de colapsar/expandir sección (flechita junto a "General") */
+body.dark-mode .btn-icon,
+body.dark-mode .icons-collapse-expand,
+body.dark-mode a.btn-icon,
+body.dark-mode .action-menu-trigger,
+body.dark-mode [data-toggle="dropdown"].btn-icon {
+  background-color: var(--dm-icon-bg) !important;
+  color: var(--dm-text) !important;
+}
+
+body.dark-mode .btn-icon:hover,
+body.dark-mode .icons-collapse-expand:hover {
+  background-color: rgba(85, 160, 220, 0.25) !important;
+}
+
+/* "Agregar un bloque" y botones de añadir sección/bloque */
+body.dark-mode .addblockbutton,
+body.dark-mode #add-block,
+body.dark-mode .block_add_block,
+body.dark-mode .block_add_block .card,
+body.dark-mode .add-sections,
+body.dark-mode .add-block-button,
+body.dark-mode .add_block_button,
+body.dark-mode a.block-add,
+body.dark-mode .block-add,
+body.dark-mode a.w-100.btn.add-section,
+body.dark-mode #course-addsection {
+  background-color: var(--dm-bg-elevated) !important;
+  color: var(--dm-link) !important;
+  border-color: var(--dm-border) !important;
+}
+
+body.dark-mode a.block-add:hover,
+body.dark-mode .block-add:hover {
+  background-color: rgba(85, 160, 220, 0.22) !important;
+}
+
+/* El contenedor que envuelve el botón "Agregar un bloque" debe usar el fondo
+   de página normal, no el tono claro del botón, para que no se vea como
+   una franja pegada debajo */
+body.dark-mode .block-region,
+body.dark-mode aside.block-region,
+body.dark-mode #block-region-side-pre,
+body.dark-mode .block-region-side-pre {
+  background-color: var(--dm-bg) !important;
+  border-color: var(--dm-border) !important;
+}
+body.dark-mode .backup-section,
+body.dark-mode .backup-section.settings-section,
+body.dark-mode .detail-pair,
+body.dark-mode .backup-progress {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* Popover de notificaciones / mensajes en el navbar */
+body.dark-mode .popover-region-container,
+body.dark-mode .popover-region-header-container,
+body.dark-mode .popover-region-content-container,
+body.dark-mode .popover-region-footer-container,
+body.dark-mode .popover-region-content,
+body.dark-mode .all-notifications,
+body.dark-mode .content-item-container,
+body.dark-mode .content-item-container.notification,
+body.dark-mode .content-item-container.notification.unread,
+body.dark-mode .empty-message {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* La notificación "no leída" en Moodle usa un tono ligeramente distinto para destacarla */
+body.dark-mode .content-item-container.notification.unread {
+  background-color: var(--dm-bg-elevated) !important;
+}
+
+/* Modal "Añadir actividad o recurso" y similares */
+body.dark-mode .tab-pane,
+body.dark-mode .tab-content,
+body.dark-mode .chooser-container,
+body.dark-mode .modchoosercontainer,
+body.dark-mode .searchcontainer,
+body.dark-mode .optionscontainer {
+  background-color: var(--dm-bg) !important;
+  color: var(--dm-text) !important;
+}
+
+/* Paginación e índice alfabético (A-Z) en listados como Participantes */
+body.dark-mode .page-link,
+body.dark-mode .pagination .page-item .page-link,
+body.dark-mode .initialbar a {
+  background-color: var(--dm-bg-elevated) !important;
+  color: var(--dm-link) !important;
+  border-color: var(--dm-border) !important;
+}
+
+body.dark-mode .page-item.active .page-link,
+body.dark-mode .initialbar .current {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+}
+
+/* Utilidad bg-light de Bootstrap (paneles de filtros, etc.) */
+body.dark-mode .bg-light {
+  background-color: var(--dm-bg-elevated) !important;
+  color: var(--dm-text) !important;
+}
+
+/* Pie de los modales (ej. franja "buscar contenido en moodleNet") */
+body.dark-mode .modal-footer,
+body.dark-mode .modal-header,
+body.dark-mode .optionsdialogue-footer,
+body.dark-mode .modal .footer {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* El contenedor que envuelve las tarjetas de contenido (el "marco blanco") */
+body.dark-mode #region-main-box > .card,
+body.dark-mode #region-main-box,
+body.dark-mode .path-admin #region-main-box,
+body.dark-mode .path-my #region-main-box {
+  background-color: var(--dm-bg-card) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* ---------- Navbar superior / breadcrumb ---------- */
+body.dark-mode .navbar,
+body.dark-mode #page-header,
+body.dark-mode .moove-top-header,
+body.dark-mode .secondary-navigation,
+body.dark-mode .primary-navigation,
+body.dark-mode .breadcrumb,
+body.dark-mode .path-navbutton {
+  background-color: var(--dm-bg) !important;
+  border-color: var(--dm-border) !important;
+  color: var(--dm-text) !important;
+}
+
+/* ---------- Drawers (índice del curso, navegación lateral, mensajes) ---------- */
+body.dark-mode .drawer,
+body.dark-mode .drawer-header,
+body.dark-mode .courseindex,
+body.dark-mode .courseindex-container,
+body.dark-mode .drawercontent,
+body.dark-mode [id^="theme_boost-drawers"] {
+  background-color: var(--dm-bg-sidebar) !important;
+  border-color: var(--dm-border) !important;
+  color: var(--dm-text) !important;
+}
+
+/* ---------- Cualquier caja blanca genérica de Bootstrap/Moodle ---------- */
+body.dark-mode .card,
+body.dark-mode .card-body,
+body.dark-mode .card-header,
+body.dark-mode .card-footer,
+body.dark-mode .block,
+body.dark-mode .generalbox,
+body.dark-mode .box,
+body.dark-mode .contentwithoutlink,
+body.dark-mode .course-content,
+body.dark-mode .activity-item,
+body.dark-mode .list-group-item,
+body.dark-mode .modal-content,
+body.dark-mode .dropdown-menu,
+body.dark-mode .popover,
+body.dark-mode .bg-white,
+body.dark-mode .coursebox,
+body.dark-mode .courseboxid,
+body.dark-mode .subcategories,
+body.dark-mode #adminsettings,
+body.dark-mode .admin-note,
+body.dark-mode .settingsform,
+body.dark-mode .path-admin .content,
+body.dark-mode [class*="bg-white"] {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* ---------- Textos y enlaces ---------- */
+body.dark-mode a {
+  color: var(--dm-link) !important;
+}
+
+body.dark-mode .text-muted,
+body.dark-mode small,
+body.dark-mode .text-secondary {
+  color: var(--dm-text-muted) !important;
+}
+
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4,
+body.dark-mode h5,
+body.dark-mode h6 {
+  color: var(--dm-text) !important;
+}
+
+/* Los nombres de sección del curso ("General", "Nueva sección"...) son <a>
+   pero deben verse como encabezados normales, no como enlaces azules */
+body.dark-mode .sectionname,
+body.dark-mode .sectionname a,
+body.dark-mode h3.sectionname,
+body.dark-mode .h4.sectionname,
+body.dark-mode .course-section-header a,
+body.dark-mode .course-content-item {
+  color: var(--dm-text) !important;
+}
+
+/* ---------- Formularios ---------- */
+body.dark-mode input,
+body.dark-mode select,
+body.dark-mode textarea,
+body.dark-mode .form-control,
+body.dark-mode .custom-select {
+  background-color: var(--dm-bg-elevated) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+body.dark-mode input::placeholder,
+body.dark-mode textarea::placeholder {
+  color: var(--dm-text-muted) !important;
+}
+
+/* NOTA: los botones .btn-primary NO se tocan a propósito.
+   Cada sitio tiene su propio color de marca (azul, verde, etc.)
+   definido en Apariencia > Moove > Color del tema / Bootstrap.
+   Forzarlo aquí rompía ese color original, así que se deja intacto. */
+
+body.dark-mode .btn-outline-secondary {
+  border-color: var(--dm-border) !important;
+  color: var(--dm-text) !important;
+}
+
+body.dark-mode .btn-outline-secondary:hover {
+  background-color: var(--dm-bg-elevated) !important;
+}
+
+/* ---------- Tablas (incluye tablas de administración) ---------- */
+body.dark-mode table,
+body.dark-mode th,
+body.dark-mode td,
+body.dark-mode .table,
+body.dark-mode .admintable,
+body.dark-mode .generaltable {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+body.dark-mode .table-striped tbody tr:nth-of-type(odd) {
+  background-color: var(--dm-bg-elevated) !important;
+}
+
+/* ---------- Footer ---------- */
+body.dark-mode #page-footer,
+body.dark-mode .moove-footer {
+  background-color: var(--dm-bg-sidebar) !important;
+  color: var(--dm-text-muted) !important;
+}
+
+/* ---------- Calendario (bloque lateral) ---------- */
+body.dark-mode .calendarwrapper,
+body.dark-mode .calendar-controls,
+body.dark-mode table.calendarmonth td,
+body.dark-mode table.calendarmonth th {
+  background-color: var(--dm-bg-card) !important;
+  color: var(--dm-text) !important;
+  border-color: var(--dm-border) !important;
+}
+
+/* ---------- Íconos que dependen de color oscuro sobre fondo claro ---------- */
+body.dark-mode svg,
+body.dark-mode .icon {
+  filter: none;
+}
+
+/* =========================================================
+   BOTÓN TOGGLE - integrado al estilo de los íconos del navbar
+   ========================================================= */
+.dark-mode-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  margin: 0 4px;
+  vertical-align: middle;
+  transition: background-color 0.2s ease;
+}
+
+.dark-mode-toggle-btn:hover {
+  background-color: rgba(150, 150, 150, 0.15);
+}
+
+.dark-mode-toggle-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  display: block;
+}
+
+body.dark-mode .dark-mode-toggle-btn {
+  color: #f0c040; /* sol amarillo en modo oscuro */
+}
+
+body:not(.dark-mode) .dark-mode-toggle-btn {
+  color: #6b6f76; /* mismo tono gris que el resto de íconos del navbar */
+}
+
+/* =========================================================
+   REGLA FINAL DE MÁXIMA PRIORIDAD
+   Menú de acciones de sección/actividad (⋮ → Vista, Editar ajustes,
+   Destacar, Duplicar, Ocultar, Mover, Enlace permanente, Borrar).
+   Se coloca al final a propósito para ganar cualquier empate de
+   especificidad con reglas anteriores.
+   ========================================================= */
+body.dark-mode .dropdown-menu.menu a.dropdown-item,
+body.dark-mode .action-menu-list a.dropdown-item,
+body.dark-mode a.dropdown-item.menu-action {
+  background-color: transparent !important;
+  color: var(--dm-text) !important;
+}
+
+body.dark-mode .dropdown-menu.menu a.dropdown-item:hover,
+body.dark-mode .action-menu-list a.dropdown-item:hover,
+body.dark-mode a.dropdown-item.menu-action:hover {
+  background-color: rgba(85, 160, 220, 0.28) !important;
+  color: #ffffff !important;
+}
+
+/* El botón "Añadir una actividad o un recurso" NO vive dentro de un
+   dropdown-menu, está suelto sobre la línea punteada divisoria. Por eso
+   necesita fondo SÓLIDO (no transparente) para tapar esa línea, igual que
+   ocurre en modo claro con su fondo blanco. */
+body.dark-mode .section-modchooser.btn.add-content,
+body.dark-mode button.section-modchooser.add-content {
+  background-color: var(--dm-bg-elevated) !important;
+  color: var(--dm-link) !important;
+}
+
+body.dark-mode .section-modchooser.btn.add-content:hover,
+body.dark-mode button.section-modchooser.add-content:hover {
+  background-color: rgba(85, 160, 220, 0.22) !important;
+}
