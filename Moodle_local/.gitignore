@@ -1,0 +1,33 @@
+# ============================================================
+# .gitignore para repositorio de configuración de Moodle local
+# ============================================================
+
+# --- Credenciales reales (NUNCA versionar) ---
+config.php
+
+# --- Volcados de BD desactualizados ---
+db/moodle_dump_*.sql
+
+# --- moodledata ---
+moodledata/
+
+# --- Caché y temporales de Moodle ---
+cache/
+localcache/
+temp/
+trashdir/
+sessions/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Archivos del sistema operativo ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# --- Node / npm ---
+node_modules/

@@ -1,0 +1,33 @@
+<?php  // Moodle configuration file — PLANTILLA (copiar a config.php y ajustar)
+
+unset($CFG);
+global $CFG;
+$CFG = new stdClass();
+
+// --- Base de datos ---
+$CFG->dbtype    = 'mariadb';
+$CFG->dblibrary = 'native';
+$CFG->dbhost    = 'localhost';
+$CFG->dbname    = 'moodle';
+$CFG->dbuser    = 'DB_USER';        // reemplazar con el usuario real
+$CFG->dbpass    = 'DB_PASSWORD';    // reemplazar con la contraseña real
+$CFG->prefix    = 'mdl_';
+$CFG->dboptions = array (
+  'dbpersist' => 0,
+  'dbport'    => 3306,
+  'dbsocket'  => '',
+  'dbcollation' => 'utf8mb4_unicode_ci',
+);
+
+// --- URLs y rutas ---
+// Ajustar según el entorno destino (ej. http://localhost:8080 o http://localhost)
+$CFG->wwwroot   = 'http://localhost';
+
+// Ruta absoluta al directorio moodledata (fuera del document root)
+$CFG->dataroot  = '/var/www/moodledata';
+
+$CFG->admin     = 'admin';
+
+$CFG->directorypermissions = 02777;
+
+require_once(__DIR__ . '/lib/setup.php');
