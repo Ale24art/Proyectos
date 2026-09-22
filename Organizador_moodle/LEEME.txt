@@ -1,0 +1,94 @@
+TecnoCleveland · Organizador Moodle
+════════════════════════════════════
+
+QUÉ ES
+------
+App web (HTML + CSS + JavaScript, sin instalación) para llevar el control de qué
+cursos modelo has copiado a cada colegio, en qué año/grado, y cuántas clases
+tiene subidas cada copia en Moodle.
+
+CÓMO ABRIRLA
+-------------
+1. Descomprime esta carpeta donde quieras.
+2. Abre el archivo "login.html" con doble clic (se abre en tu navegador).
+   - También puedes subir toda la carpeta a un hosting (o a un Moodle, GitHub
+     Pages, Netlify, etc.) y abrir login.html desde ahí.
+
+CÓDIGOS DE ACCESO
+------------------
+Por ahora el acceso es con un código numérico (no usuario/clave de texto).
+Los códigos están al final del archivo "login.html", en esta sección:
+
+    const USERS = {
+      '2026': 'Administrador',
+      '1010': 'Asistente'
+    };
+
+Cámbialos por los códigos que quieras usar, y agrega más líneas si necesitas
+que otra persona (por ejemplo, otro coordinador) entre también:
+
+    const USERS = {
+      '4821': 'José',
+      '7734': 'María'
+    };
+
+DÓNDE SE GUARDAN LOS DATOS
+----------------------------
+Todavía no está conectado a una base de datos en la nube (Firebase u otra).
+Por ahora todo se guarda en el "localStorage" del navegador donde lo uses,
+es decir: los datos quedan guardados en ESE navegador y ESA computadora.
+
+Esto significa:
+  • Si abres el organizador desde otro computador o navegador, verás los
+    datos base (los 28 colegios y los 17 cursos modelo), pero no los cursos
+    que hayas copiado desde otro equipo.
+  • Si borras el historial/datos de navegación de ese navegador, podrías
+    perder la información.
+
+Por eso la app incluye la sección "Respaldo" en el menú lateral:
+  • "Descargar respaldo (.json)" → guarda un archivo con todo lo registrado.
+    Hazlo seguido (por ejemplo, cada vez que termines de registrar colegios).
+  • "Elegir archivo..." → restaura los datos desde un respaldo .json anterior
+    (por ejemplo, si cambias de computadora o quieres recuperar información).
+
+Cuando quieras, puedo conectar esta misma app a un Firebase real (como el que
+ya usas en tu otro organizador) para que los datos se sincronicen automática-
+mente entre computadoras y no dependan de un solo navegador. Para eso solo
+necesito que me compartas la configuración de un proyecto de Firebase
+(Realtime Database) dedicado a este organizador.
+
+QUÉ PUEDES HACER EN LA APP
+----------------------------
+• Panel: resumen general (colegios activos, cursos copiados, clases subidas,
+  distribución por nivel, últimos registros).
+
+• Colegios: lista de los 28 colegios (puedes agregar más). Al entrar a uno,
+  ves todos los cursos que le has copiado (año, curso modelo, nivel, nombre
+  completo, nombre corto, clases disponibles, fecha de copia) y puedes
+  agregar, editar o eliminar registros.
+
+• Cursos modelo: catálogo de los 17 cursos modelo (7 de Educación Media,
+  10 de Educación Primaria). Puedes agregar nuevos cursos modelo a medida
+  que los vayas creando, y ver en cuántos colegios se usa cada uno.
+
+• Buscar: escribe el nombre de un colegio y de inmediato ves con cuántos
+  años trabaja, si son cursos de Educación Media, Primaria o ambos, y
+  cuántas clases tiene subidas en total. También puedes exportar un reporte
+  completo en CSV (para abrir en Excel/Sheets) con todos los colegios.
+
+• Papelera: todo lo que borres (colegios, cursos modelo o registros de
+  cursos copiados) queda aquí por si necesitas restaurarlo.
+
+REGISTRAR UNA COPIA DE CURSO (el flujo típico)
+-------------------------------------------------
+1. Copia el curso modelo dentro de Moodle a la categoría del colegio, como
+   ya haces normalmente.
+2. En el organizador, entra al colegio (o usa el botón "+ Registrar copia
+   de curso" desde el Panel).
+3. Elige el curso modelo del que partiste, escribe el año/grado (ej. "1er
+   Año"), y usa el botón "✨ Sugerir nombres" para que te proponga el
+   nombre completo y corto según el ejemplo que me diste (Ej: "1er Año-AG"
+   y "1styear-ag"). Puedes editarlos si no calzan exactamente.
+4. Escribe cuántas clases tiene disponibles esa copia en Moodle en ese
+   momento. Puedes volver a editar este número más adelante cuando subas
+   más clases al curso modelo y quieras actualizar el conteo del colegio.

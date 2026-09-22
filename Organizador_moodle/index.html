@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { display: none; }
+  html.auth-ok body { display: block; }
+  #app-loader {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #F5F7FA; gap: 14px;
+  }
+  html.loader-dark #app-loader { background: #0E1420; }
+  .app-loader-ring {
+    width: 36px; height: 36px;
+    border: 3px solid #DDE4ED; border-top-color: #1E5FBF;
+    border-radius: 50%;
+    animation: loader-spin 0.75s linear infinite;
+  }
+  html.loader-dark .app-loader-ring { border-color: #2A3446; border-top-color: #4C8DFF; }
+  @keyframes loader-spin { to { transform: rotate(360deg); } }
+  .app-loader-text { font-size: 13px; color: #64748A; font-weight: 600; letter-spacing: 0.03em; font-family: Inter, sans-serif; }
+</style>
+<script>
+  (function () {
+    if (!sessionStorage.getItem('tcUser')) {
+      window.location.replace('login.html');
+    } else {
+      document.documentElement.classList.add('auth-ok');
+      if (localStorage.getItem('tc_dark') === '1')
+        document.documentElement.classList.add('loader-dark');
+    }
+  }());
+</script>
+<title>TecnoCleveland · Organizador Moodle</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo">
+    <span class="logo-mark">🤖</span>
+    <span class="logo-text">Tecno<span class="logo-accent">Cleveland</span></span>
+  </div>
+  <div class="logo-subtitle">Organizador Moodle</div>
+
+  <div class="nav-section-label">Programas</div>
+
+  <button class="nav-item active" onclick="showView('dashboard')" data-view="dashboard">
+    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".85"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".45"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".45"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".65"/></svg></span>
+    Panel
+  </button>
+  <button class="nav-item" onclick="showView('colegios')" data-view="colegios">
+    <span class="nav-icon">🏫</span>
+    Colegios
+  </button>
+  <button class="nav-item" onclick="showView('cursos')" data-view="cursos">
+    <span class="nav-icon">⚙️</span>
+    Cursos modelo
+  </button>
+  <button class="nav-item" onclick="showView('buscar')" data-view="buscar">
+    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.8" cy="6.8" r="4.8" stroke="currentColor" stroke-width="1.5"/><path d="M10.4 10.4L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+    Buscar
+  </button>
+
+  <div class="nav-section-label" style="margin-top:8px">Sistema</div>
+
+  <button class="nav-item" onclick="showView('respaldo')" data-view="respaldo">
+    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5v9M8 10.5L5 7.5M8 10.5l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 11v2A1.5 1.5 0 004 14.5h8A1.5 1.5 0 0013.5 13v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+    Respaldo
+  </button>
+
+  <button class="nav-item trash-nav" onclick="showView('trash')" data-view="trash">
+    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5h11M6 4.5V3h4v1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.5 4.5l.8 8.5a1 1 0 001 .9h5.4a1 1 0 001-.9l.8-8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+    Papelera
+    <span class="nav-badge" id="trash-count-badge" style="display:none"></span>
+  </button>
+
+  <div style="margin-top:14px;margin-bottom:4px">
+    <div class="dark-toggle">
+      <span style="font-size:13px;color:var(--text-muted);font-weight:600">🌙 Modo oscuro</span>
+      <button class="toggle-switch" id="dark-toggle-btn" onclick="toggleDark()" title="Modo oscuro"></button>
+    </div>
+  </div>
+
+  <button class="nav-item logout-btn" onclick="logout()">
+    <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M10.5 11L14 8m0 0l-3.5-3M14 8H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    Cerrar sesión
+  </button>
+
+  <div class="sidebar-footer">
+    <div id="sidebar-user" style="margin-bottom:4px;font-weight:700">—</div>
+    <div style="font-size:10px;opacity:0.6">TecnoCleveland · Academia de Robótica</div>
+  </div>
+</aside>
+<div id="sidebar-overlay"></div>
+
+<div id="app-loader" aria-hidden="true">
+  <div class="app-loader-ring"></div>
+  <div class="app-loader-text">Cargando organizador 🤖</div>
+</div>
+
+<main class="main">
+  <button id="menu-toggle" class="hamburger"><span></span><span></span><span></span></button>
+
+  <!-- ═══════════ DASHBOARD ═══════════ -->
+  <div class="view active" id="view-dashboard">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Hola, <span id="greet-user">Administrador</span> <span class="greet-emoji">👋</span></div>
+        <div class="page-subtitle" id="dashboard-date"></div>
+      </div>
+      <button class="btn btn-primary" onclick="openAsigModal(null)">+ Registrar copia de curso</button>
+    </div>
+
+    <div class="welcome-strip">
+      <div>
+        <div class="welcome-quote">Control de copias de cursos modelo por colegio, año y clases disponibles</div>
+        <div style="font-size:12px;color:var(--accent2);margin-top:6px;font-weight:700;letter-spacing:0.02em">TecnoCleveland · Academia de Robótica</div>
+      </div>
+      <div class="welcome-icons">🤖⚙️🔧</div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon">🏫</div>
+        <div class="stat-label">Colegios activos</div>
+        <div class="stat-value" id="stat-colegios">0</div>
+        <div class="stat-sub">de 28 registrados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📋</div>
+        <div class="stat-label">Cursos copiados</div>
+        <div class="stat-value" id="stat-asignaciones" style="color:var(--accent)">0</div>
+        <div class="stat-sub">años/programas asignados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📚</div>
+        <div class="stat-label">Clases subidas</div>
+        <div class="stat-value" id="stat-clases" style="color:var(--accent2)">0</div>
+        <div class="stat-sub">en total</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-label">Promedio por curso</div>
+        <div class="stat-value" id="stat-promedio" style="color:var(--green)">0</div>
+        <div class="stat-sub">clases / curso copiado</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="card">
+        <div class="card-title">Distribución por nivel</div>
+        <div id="nivel-bars"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Últimos cursos copiados</div>
+        <div id="recent-list" class="recent-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ COLEGIOS ═══════════ -->
+  <div class="view" id="view-colegios">
+    <div id="colegios-directory">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Colegios</div>
+          <div class="page-subtitle">Instituciones donde se dictan los programas de robótica</div>
+        </div>
+        <button class="btn btn-primary" onclick="openCollegeModal(null)">+ Nuevo colegio</button>
+      </div>
+
+      <div class="toolbar">
+        <input type="text" id="colegios-filter" placeholder="🔍 Filtrar colegios..." oninput="renderColegios()">
+      </div>
+
+      <div class="grid-cards" id="colegios-grid"></div>
+    </div>
+
+    <div id="colegios-detail" style="display:none">
+      <button class="btn-back" onclick="closeCollegeDetail()">← Volver a colegios</button>
+      <div class="page-header">
+        <div>
+          <div class="page-title" id="cd-nombre">—</div>
+          <div class="page-subtitle" id="cd-resumen">—</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost" onclick="editCollegeFromDetail()">✎ Editar colegio</button>
+          <button class="btn btn-primary" onclick="openAsigModalForCollege()">+ Agregar año/curso</button>
+        </div>
+      </div>
+
+      <div class="badges-row" id="cd-badges"></div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">Cursos copiados en este colegio</div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Año / Grado</th>
+                <th>Curso modelo</th>
+                <th>Nivel</th>
+                <th>Nombre completo</th>
+                <th>Nombre corto</th>
+                <th>Clases</th>
+                <th>Fecha copia</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cd-asig-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="cd-asig-empty" style="display:none">
+          Aún no hay cursos copiados para este colegio. Usa "Agregar año/curso" para registrar el primero.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ CURSOS MODELO ═══════════ -->
+  <div class="view" id="view-cursos">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Cursos modelo</div>
+        <div class="page-subtitle">Catálogo base que se copia a cada colegio</div>
+      </div>
+      <button class="btn btn-primary" id="cursos-add-btn" onclick="openCursoModal(null)">+ Nuevo curso modelo</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-nivel="media" onclick="setCursosTab('media')">🎓 Educación Media</button>
+      <button class="tab" data-nivel="primaria" onclick="setCursosTab('primaria')">🧒 Educación Primaria</button>
+    </div>
+
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Curso modelo</th>
+              <th>Colegios que lo usan</th>
+              <th>Clases (promedio subido)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cursos-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ BUSCAR ═══════════ -->
+  <div class="view" id="view-buscar">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Buscar colegio</div>
+        <div class="page-subtitle">Consulta rápida: años que maneja, nivel y clases subidas</div>
+      </div>
+      <button class="btn btn-ghost" onclick="exportReportCSV()">⬇ Exportar reporte completo (CSV)</button>
+    </div>
+
+    <div class="search-box-wrap">
+      <input type="text" id="search-input" placeholder="Escribe el nombre de un colegio..." oninput="onSearchInput()" autocomplete="off">
+      <div class="search-suggestions" id="search-suggestions"></div>
+    </div>
+
+    <div id="search-result" style="display:none">
+      <div class="card search-summary-card">
+        <div class="search-summary-head">
+          <div class="page-title" id="sr-nombre" style="font-size:20px">—</div>
+          <button class="btn btn-ghost" onclick="goToCollegeFromSearch()">Ver colegio completo →</button>
+        </div>
+        <div class="badges-row" id="sr-badges"></div>
+        <div class="sr-stats">
+          <div><span class="sr-stat-num" id="sr-anios">0</span><span class="sr-stat-label">años trabajados</span></div>
+          <div><span class="sr-stat-num" id="sr-clases">0</span><span class="sr-stat-label">clases subidas</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Detalle</div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th>Año / Grado</th><th>Curso modelo</th><th>Nivel</th><th>Clases</th><th>Fecha copia</th></tr>
+            </thead>
+            <tbody id="sr-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="search-empty" class="empty-state" style="margin-top:20px">
+      Empieza a escribir el nombre de un colegio para ver su información.
+    </div>
+  </div>
+
+  <!-- ═══════════ RESPALDO ═══════════ -->
+  <div class="view" id="view-respaldo">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Respaldo de datos</div>
+        <div class="page-subtitle">La información se guarda en este navegador. Exporta seguido para no perder nada.</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="card">
+        <div class="card-title">⬇ Exportar respaldo</div>
+        <p class="card-text">Descarga un archivo .json con todos los colegios, cursos modelo y cursos copiados registrados hasta ahora.</p>
+        <button class="btn btn-primary" onclick="exportBackup()">Descargar respaldo (.json)</button>
+      </div>
+      <div class="card">
+        <div class="card-title">⬆ Importar respaldo</div>
+        <p class="card-text">Restaura la información desde un archivo .json exportado previamente. Esto reemplaza los datos actuales de este navegador.</p>
+        <input type="file" id="import-file-input" accept="application/json" style="display:none" onchange="importBackup(event)">
+        <button class="btn btn-ghost" onclick="document.getElementById('import-file-input').click()">Elegir archivo...</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠ Restablecer datos de ejemplo</div>
+      <p class="card-text">Si algo se dañó, puedes recargar la lista base de 28 colegios y 17 cursos modelo. Esto <b>no borra</b> los cursos copiados que ya registraste.</p>
+      <button class="btn btn-red" onclick="resetCatalogs()">Restablecer colegios y cursos modelo</button>
+    </div>
+  </div>
+
+  <!-- ═══════════ PAPELERA ═══════════ -->
+  <div class="view" id="view-trash">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Papelera</div>
+        <div class="page-subtitle">Elementos eliminados. Puedes restaurarlos o borrarlos para siempre.</div>
+      </div>
+      <button class="btn btn-red" onclick="emptyTrash()">Vaciar papelera</button>
+    </div>
+
+    <div class="card" id="trash-colegios-section">
+      <div class="card-title">Colegios eliminados</div>
+      <div id="trash-colegios-list"></div>
+    </div>
+
+    <div class="card" id="trash-asig-section">
+      <div class="card-title">Cursos copiados eliminados</div>
+      <div id="trash-asig-list"></div>
+    </div>
+
+    <div class="card" id="trash-cursos-section">
+      <div class="card-title">Cursos modelo eliminados</div>
+      <div id="trash-cursos-list"></div>
+    </div>
+
+    <div class="empty-state" id="trash-empty" style="display:none">La papelera está vacía.</div>
+  </div>
+
+</main>
+
+<!-- MODAL: Colegio -->
+<div class="modal-overlay" id="college-modal">
+  <div class="modal modal-sm">
+    <div class="modal-title" id="college-modal-title">🏫 Nuevo colegio</div>
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Nombre del colegio</label>
+      <input type="text" id="cm-name" placeholder="Ej: Colegio La Merced" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('college-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCollege()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Curso modelo -->
+<div class="modal-overlay" id="curso-modal">
+  <div class="modal modal-sm">
+    <div class="modal-title" id="curso-modal-title">⚙️ Nuevo curso modelo</div>
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Nombre del curso modelo</label>
+      <input type="text" id="km-name" placeholder="Ej: Robótica 3" />
+    </div>
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Nivel</label>
+      <select id="km-nivel">
+        <option value="media">🎓 Educación Media</option>
+        <option value="primaria">🧒 Educación Primaria</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('curso-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCurso()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Asignación (curso copiado a un colegio) -->
+<div class="modal-overlay" id="asig-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title" id="asig-modal-title">📋 Registrar copia de curso</div>
+
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Colegio</label>
+      <select id="am-colegio"></select>
+    </div>
+
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="form-field">
+        <label>Curso modelo</label>
+        <select id="am-curso" onchange="onAsigCursoChange()"></select>
+      </div>
+      <div class="form-field">
+        <label>Nivel</label>
+        <input type="text" id="am-nivel-display" readonly />
+      </div>
+    </div>
+
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="form-field">
+        <label>Año / Grado</label>
+        <input type="text" id="am-anio" placeholder="Ej: 1er Año" list="anio-suggestions" oninput="suggestNames()" />
+        <datalist id="anio-suggestions">
+          <option value="1er Año"><option value="2do Año"><option value="3er Año">
+          <option value="4to Año"><option value="5to Año">
+          <option value="1er Grado"><option value="2do Grado"><option value="3er Grado">
+          <option value="4to Grado"><option value="5to Grado"><option value="6to Grado">
+        </datalist>
+      </div>
+      <div class="form-field">
+        <label>Fecha de copia</label>
+        <input type="date" id="am-fecha" />
+      </div>
+    </div>
+
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="form-field">
+        <label>Nombre completo del curso</label>
+        <input type="text" id="am-nombre-completo" placeholder="Ej: 1er Año-AG" />
+      </div>
+      <div class="form-field">
+        <label>Nombre corto del curso</label>
+        <input type="text" id="am-nombre-corto" placeholder="Ej: 1styear-ag" />
+      </div>
+    </div>
+    <div style="margin:-6px 0 14px;text-align:right">
+      <button class="btn-link" onclick="suggestNames(true)">✨ Sugerir nombres a partir del año y el colegio</button>
+    </div>
+
+    <div class="form-field" style="margin-bottom:14px">
+      <label>Clases disponibles en Moodle</label>
+      <input type="number" id="am-clases" min="0" placeholder="Ej: 8" />
+    </div>
+
+    <div class="form-field" style="margin-bottom:6px">
+      <label>Notas (opcional)</label>
+      <textarea id="am-notas" placeholder="Observaciones sobre esta copia..." style="min-height:60px"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-red" id="asig-modal-del-btn" onclick="deleteAsigFromModal()" style="display:none;margin-right:auto">🗑 Eliminar</button>
+      <button class="btn btn-ghost" onclick="closeModal('asig-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveAsig()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>

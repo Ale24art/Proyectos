@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TecnoCleveland · Organizador Moodle</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --navy:#0E1420; --navy2:#161D2B;
+    --accent:#4C8DFF; --accent2:#F0A94E;
+    --text:#E7ECF4; --text-muted:#8291A8;
+    --border:#2A3446;
+  }
+  body{
+    font-family:'Inter',sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(76,141,255,0.14) 0%, transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(240,169,78,0.10) 0%, transparent 45%),
+      linear-gradient(160deg,#0A0F18 0%, #101826 60%, #0C1220 100%);
+    color:var(--text);
+    padding:20px;
+    position:relative;
+    overflow:hidden;
+  }
+  /* circuito decorativo */
+  body::before{
+    content:'';
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(76,141,255,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(76,141,255,0.06) 1px, transparent 1px);
+    background-size:42px 42px;
+    mask-image: radial-gradient(circle at 50% 40%, rgba(0,0,0,0.9) 0%, transparent 70%);
+    pointer-events:none;
+  }
+  .login-card{
+    position:relative; z-index:1;
+    background:rgba(22,29,43,0.92);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:44px 40px 36px;
+    width:100%; max-width:400px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(76,141,255,0.05);
+    animation:cardIn .45s cubic-bezier(.34,1.56,.64,1) both;
+    text-align:center;
+  }
+  @keyframes cardIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+  .login-hero{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:26px;}
+  .login-mark{
+    width:74px;height:74px;border-radius:16px;
+    background:linear-gradient(135deg, var(--accent) 0%, #2E5FCC 100%);
+    display:flex;align-items:center;justify-content:center;
+    font-size:34px;
+    box-shadow:0 8px 26px rgba(76,141,255,0.35);
+  }
+  .login-brand{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:24px; font-weight:700; letter-spacing:-0.01em;
+  }
+  .login-brand span{color:var(--accent2);}
+  .login-subtitle{font-size:12.5px;color:var(--text-muted);font-weight:600;letter-spacing:0.03em;}
+
+  .login-field-label{
+    text-align:left; font-size:11px; font-weight:700; letter-spacing:0.09em;
+    color:var(--text-muted); margin-bottom:8px; text-transform:uppercase;
+  }
+  .login-input-wrap{position:relative;margin-bottom:14px;}
+  .login-input-wrap input{
+    width:100%; padding:14px 50px 14px 16px;
+    border:1.5px solid var(--border); border-radius:12px;
+    font-size:16px; font-family:inherit; color:var(--text);
+    background:#0F1521; outline:none;
+    letter-spacing:0.1em;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .login-input-wrap input::placeholder{color:#4A5670; letter-spacing:0.08em;}
+  .login-input-wrap input:focus{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(76,141,255,0.2);
+  }
+  .eye-btn{
+    position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    background:none; border:none; cursor:pointer; font-size:17px;
+    opacity:.5; padding:6px; line-height:1;
+  }
+  .eye-btn:hover{opacity:.85;}
+
+  .login-error{
+    display:none; background:rgba(255,110,96,0.1); color:#FF8A80;
+    font-size:12.5px; font-weight:700; margin-bottom:12px; text-align:left;
+    padding:10px 13px; border-radius:9px; border-left:3px solid #FF6E60;
+  }
+
+  .login-btn{
+    width:100%; padding:14px;
+    background:linear-gradient(135deg, var(--accent) 0%, #3E74E0 100%);
+    color:#fff; border:none; border-radius:12px;
+    font-size:15px; font-weight:700; font-family:inherit; cursor:pointer;
+    letter-spacing:0.02em;
+    box-shadow:0 4px 0 0 #2A56AE;
+    transition:transform .12s, box-shadow .12s, filter .2s;
+  }
+  .login-btn:hover{filter:brightness(1.08);}
+  .login-btn:active{transform:translateY(3px); box-shadow:0 1px 0 0 #2A56AE;}
+
+  .login-footer{
+    margin-top:22px; font-size:10.5px; color:#4A5670; font-weight:600;
+    letter-spacing:0.04em;
+  }
+</style>
+</head>
+<body>
+
+  <div class="login-card">
+    <div class="login-hero">
+      <div class="login-mark">🤖</div>
+      <div class="login-brand">Tecno<span>Cleveland</span></div>
+      <div class="login-subtitle">ORGANIZADOR MOODLE</div>
+    </div>
+
+    <div class="login-field-label">Código de acceso</div>
+    <div class="login-input-wrap">
+      <input type="password" id="code-input" placeholder="••••••••" autocomplete="off" inputmode="numeric" />
+      <button class="eye-btn" onclick="toggleEye()" id="eye-btn" title="Mostrar/ocultar">👁</button>
+    </div>
+
+    <div class="login-error" id="login-error"></div>
+
+    <button class="login-btn" onclick="doLogin()">Ingresar →</button>
+
+    <div class="login-footer">TecnoCleveland · Academia de Robótica</div>
+  </div>
+
+  <script>
+    // Si ya hay sesión activa, ir directamente al organizador
+    if (sessionStorage.getItem('tcUser')) window.location.replace('index.html');
+
+    // ───────────────────────────────────────────────────────────
+    // CÓDIGOS DE ACCESO: agrega, quita o cambia aquí las personas
+    // que pueden entrar al organizador. Formato: 'codigo': 'Nombre'
+    // ───────────────────────────────────────────────────────────
+    const USERS = {
+      '2026': 'Administrador',
+      '1010': 'Asistente'
+    };
+
+    function doLogin() {
+      const code = document.getElementById('code-input').value.trim();
+      const user = USERS[code];
+      if (user) {
+        sessionStorage.setItem('tcUser', user);
+        window.location.replace('index.html');
+      } else {
+        showError('Código incorrecto. Intenta de nuevo.');
+        document.getElementById('code-input').select();
+      }
+    }
+
+    function toggleEye() {
+      const inp = document.getElementById('code-input');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    }
+
+    function showError(msg) {
+      const err = document.getElementById('login-error');
+      err.textContent = msg;
+      err.style.display = 'block';
+    }
+
+    document.getElementById('code-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+      document.getElementById('login-error').style.display = 'none';
+    });
+
+    document.getElementById('code-input').focus();
+  </script>
+</body>
+</html>
