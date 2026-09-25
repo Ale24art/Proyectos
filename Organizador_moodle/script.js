@@ -40,7 +40,7 @@ const DEFAULT_CURSOS = [
 
 const NIVEL_LABEL = { media: "🎓 Educación Media", primaria: "🧒 Educación Primaria" };
 
-let data = null; // { colegios:[], cursos:[], asignaciones:[], trash:{colegios:[],cursos:[],asignaciones:[]} }
+let data = null; // { colegios:[], cursos:[], asignaciones:[], participantes:[], trash:{colegios:[],cursos:[],asignaciones:[]} }
 
 let currentView = 'dashboard';
 let currentCollegeId = null;
@@ -49,6 +49,13 @@ let editingCollegeId = null;
 let editingCursoId = null;
 let editingAsigId = null;
 let asigPresetCollegeId = null;
+
+let genColegioId = null;
+let genAnioSel = null;
+let genAsig = null;
+let genPreviewRows = [];
+let genPreviewCtx = null;
+const GEN_COLS = ['username','password','firstname','lastname','email','city','country','course1','group1','role1','enrolperiod1','suspended'];
 
 /* ── UTILIDADES ── */
 function uid() { return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -78,6 +85,7 @@ function freshData() {
     colegios: DEFAULT_COLEGIOS.map(nombre => ({ id: uid(), nombre })),
     cursos: DEFAULT_CURSOS.map(c => ({ id: uid(), nombre: c.nombre, nivel: c.nivel })),
     asignaciones: [],
+    participantes: [],
     trash: { colegios: [], cursos: [], asignaciones: [] }
   };
 }
@@ -91,6 +99,7 @@ function loadData() {
       colegios: parsed.colegios || [],
       cursos: parsed.cursos || [],
       asignaciones: parsed.asignaciones || [],
+      participantes: parsed.participantes || [],
       trash: parsed.trash || { colegios: [], cursos: [], asignaciones: [] }
     };
   } catch (e) {
@@ -147,12 +156,13 @@ function renderAll() {
   renderDashboard();
   renderColegios();
   renderCursos();
+  renderGenerador();
   renderTrash();
   updateTrashBadge();
 }
 
 /* ── NAVEGACIÓN ── */
-const NAV_VIEWS = ['dashboard','colegios','cursos','buscar','respaldo','trash'];
+const NAV_VIEWS = ['dashboard','colegios','generador','cursos','buscar','respaldo','trash'];
 
 function showView(id) {
   currentView = id;
@@ -163,6 +173,7 @@ function showView(id) {
   if (navBtn) navBtn.classList.add('active');
 
   if (id === 'colegios') { closeCollegeDetail(); renderColegios(); }
+  if (id === 'generador') renderGenerador();
   if (id === 'cursos') renderCursos();
   if (id === 'trash') renderTrash();
   if (id === 'dashboard') renderDashboard();
@@ -337,6 +348,8 @@ function renderCollegeDetail() {
       </tr>`;
     }).join('');
   }
+
+  renderCollegeParticipantes(col.id);
 }
 
 function editCollegeFromDetail() { openCollegeModal(currentCollegeId); }
@@ -374,6 +387,7 @@ function saveCollege() {
   renderColegios();
   if (currentCollegeId) renderCollegeDetail();
   renderDashboard();
+  renderGenerador();
 }
 
 function deleteCollege(id) {
@@ -387,6 +401,7 @@ function deleteCollege(id) {
   renderColegios();
   renderTrash();
   updateTrashBadge();
+  renderGenerador();
   showToast('Colegio movido a la papelera');
 }
 
@@ -593,6 +608,7 @@ function saveAsig() {
   renderDashboard();
   renderColegios();
   renderCursos();
+  renderGenerador();
   if (currentCollegeId) renderCollegeDetail();
 }
 
@@ -612,10 +628,369 @@ function deleteAsig(id) {
   renderDashboard();
   renderColegios();
   renderCursos();
+  renderGenerador();
   if (currentCollegeId) renderCollegeDetail();
   renderTrash();
   updateTrashBadge();
   showToast('Movido a la papelera');
+}
+
+/* ════════════════════════════════════════════════════════════
+   GENERADOR DE USUARIOS
+   ════════════════════════════════════════════════════════════ */
+function renderGenerador() {
+  if (!document.getElementById('gen-colegio')) return;
+  fillGenColegioSelect(genColegioId);
+  onGenColegioChange();
+}
+
+function fillGenColegioSelect(selectedId) {
+  const sel = document.getElementById('gen-colegio');
+  const sorted = [...data.colegios].sort((a,b) => a.nombre.localeCompare(b.nombre));
+  sel.innerHTML = sorted.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+  if (selectedId && sorted.some(c => c.id === selectedId)) sel.value = selectedId;
+  genColegioId = sel.value || null;
+}
+
+function fillGenAnioSelect(colegioId, selectedAnio) {
+  const sel = document.getElementById('gen-anio');
+  const anios = [...new Set(data.asignaciones.filter(a => a.colegioId === colegioId).map(a => a.anio))]
+    .sort((a,b) => (a||'').localeCompare(b||''));
+
+  if (!anios.length) {
+    sel.innerHTML = `<option value="">Sin años asignados</option>`;
+    sel.disabled = true;
+    genAnioSel = null;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = anios.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  if (selectedAnio && anios.includes(selectedAnio)) sel.value = selectedAnio;
+  genAnioSel = sel.value || null;
+}
+
+function onGenColegioChange() {
+  genColegioId = document.getElementById('gen-colegio').value || null;
+  hideGenPreview();
+  fillGenAnioSelect(genColegioId, genAnioSel);
+  onGenAnioChange();
+  renderGenYearsSummary();
+}
+
+function onGenAnioChange() {
+  genAnioSel = document.getElementById('gen-anio').value || null;
+  hideGenPreview();
+  const infoBox = document.getElementById('gen-asig-info');
+  genAsig = null;
+  if (genColegioId && genAnioSel) {
+    genAsig = data.asignaciones.find(a => a.colegioId === genColegioId && a.anio === genAnioSel) || null;
+  }
+  if (genAsig) {
+    const curso = data.cursos.find(c => c.id === genAsig.cursoId);
+    document.getElementById('gen-info-curso').value = curso ? curso.nombre : '—';
+    document.getElementById('gen-info-corto').value = genAsig.nombreCorto || '—';
+    document.getElementById('gen-info-nivel').value = curso ? NIVEL_LABEL[curso.nivel] : '—';
+    infoBox.style.display = '';
+  } else {
+    infoBox.style.display = 'none';
+  }
+}
+
+function showGenError(msg) {
+  const box = document.getElementById('gen-error');
+  box.textContent = msg;
+  box.style.display = '';
+}
+function hideGenError() {
+  document.getElementById('gen-error').style.display = 'none';
+}
+
+function hideGenPreview() {
+  genPreviewRows = [];
+  genPreviewCtx = null;
+  document.getElementById('gen-preview-card').style.display = 'none';
+  hideGenError();
+}
+
+function parseLines(text) {
+  return String(text || '').split(/\r?\n/).map(l => l.trim());
+}
+
+function generarListaUsuarios() {
+  hideGenError();
+  if (!genColegioId) { showGenError('Elige un colegio.'); return; }
+  if (!genAsig) { showGenError('Elige un año/grado con curso asignado para este colegio.'); return; }
+
+  const nombreCorto = genAsig.nombreCorto || '';
+  const lastDash = nombreCorto.lastIndexOf('-');
+  if (lastDash === -1 || lastDash === nombreCorto.length - 1) {
+    showGenError('Este curso no tiene un nombre corto válido para generar usuarios.');
+    return;
+  }
+  const prefix = nombreCorto.slice(lastDash + 1);
+
+  const apLines = parseLines(document.getElementById('gen-apellidos').value);
+  const noLines = parseLines(document.getElementById('gen-nombres').value);
+  while (apLines.length && apLines[apLines.length - 1] === '') apLines.pop();
+  while (noLines.length && noLines[noLines.length - 1] === '') noLines.pop();
+
+  const maxLen = Math.max(apLines.length, noLines.length);
+  if (!maxLen) { showGenError('Escribe al menos un estudiante en Apellidos y Nombres.'); return; }
+  for (let i = 0; i < maxLen; i++) {
+    if (!apLines[i] || !noLines[i]) {
+      showGenError(`Las cajas de Apellidos y Nombres no coinciden en la línea ${i + 1}.`);
+      return;
+    }
+  }
+
+  const password = document.getElementById('gen-password').value.trim() || '1234';
+  const city = document.getElementById('gen-ciudad').value.trim();
+  const group1 = document.getElementById('gen-grupo').value.trim();
+
+  const escPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + escPrefix + '(\\d+)$');
+  let maxNum = 0;
+  data.participantes
+    .filter(p => p.colegioId === genColegioId)
+    .forEach(p => {
+      const m = re.exec(p.username || '');
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+    });
+  const start = maxNum + 1;
+
+  const rows = [];
+  for (let i = 0; i < maxLen; i++) {
+    const num = String(start + i).padStart(4, '0');
+    const username = prefix + num;
+    const nombres = noLines[i];
+    rows.push({
+      username, password,
+      firstname: `${username} ${nombres}`,
+      lastname: apLines[i],
+      email: `${username}@tecno.com`,
+      city, country: 'Venezuela',
+      course1: nombreCorto,
+      group1, role1: 'student', enrolperiod1: '365d', suspended: '0'
+    });
+  }
+
+  genPreviewRows = rows;
+  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio: genAnioSel };
+  renderGenPreviewTable();
+  document.getElementById('gen-preview-card').style.display = '';
+}
+
+function renderGenPreviewTable() {
+  const body = document.getElementById('gen-preview-body');
+  body.innerHTML = genPreviewRows.map((r, i) => {
+    return '<tr>' + GEN_COLS.map(col => {
+      const id = `gp-${col}-${i}`;
+      const handler = col === 'username'
+        ? `onchange="onGenUsernameEdit(${i}, this.value)"`
+        : `oninput="onGenFieldEdit(${i}, '${col}', this.value)"`;
+      return `<td><input class="table-input" id="${id}" value="${esc(r[col])}" ${handler}></td>`;
+    }).join('') + '</tr>';
+  }).join('');
+}
+
+function onGenFieldEdit(i, field, value) {
+  if (!genPreviewRows[i]) return;
+  genPreviewRows[i][field] = value;
+}
+
+function onGenUsernameEdit(i, value) {
+  const row = genPreviewRows[i];
+  if (!row) return;
+  const oldUsername = row.username;
+  let namePart = row.firstname;
+  if (oldUsername && row.firstname.startsWith(oldUsername + ' ')) {
+    namePart = row.firstname.slice(oldUsername.length + 1);
+  }
+  const newUsername = value.trim();
+  row.username = newUsername;
+  row.firstname = namePart ? `${newUsername} ${namePart}` : newUsername;
+  row.email = `${newUsername}@tecno.com`;
+  const fnInput = document.getElementById(`gp-firstname-${i}`);
+  const emInput = document.getElementById(`gp-email-${i}`);
+  if (fnInput) fnInput.value = row.firstname;
+  if (emInput) emInput.value = row.email;
+}
+
+function guardarListaUsuarios() {
+  if (!genPreviewRows.length || !genPreviewCtx) { showToast('Genera una lista primero'); return; }
+  const { colegioId, cursoId, anio } = genPreviewCtx;
+  const existing = data.participantes.filter(p => p.colegioId === colegioId && p.anio === anio);
+  if (existing.length) {
+    if (!confirm('¿Reemplazar la lista ya generada para este año?')) return;
+    data.participantes = data.participantes.filter(p => !(p.colegioId === colegioId && p.anio === anio));
+  }
+  const fecha = todayStr();
+  genPreviewRows.forEach(r => {
+    let nombres = r.firstname;
+    if (r.username && r.firstname.startsWith(r.username + ' ')) {
+      nombres = r.firstname.slice(r.username.length + 1);
+    }
+    data.participantes.push({
+      id: uid(), colegioId, cursoId, anio,
+      username: r.username, password: r.password,
+      nombres, apellidos: r.lastname,
+      email: r.email, city: r.city, country: r.country,
+      course1: r.course1, group1: r.group1, role1: r.role1,
+      enrolperiod1: r.enrolperiod1, suspended: r.suspended,
+      fecha
+    });
+  });
+  saveData();
+  showToast('Lista guardada ✓');
+  renderGenYearsSummary();
+  if (currentCollegeId === colegioId) renderCollegeParticipantes(colegioId);
+}
+
+function buildUsuariosCSV(rows) {
+  const header = 'username,password,firstname,lastname,email,city,country,course1,group1,role1,enrolperiod1,suspended';
+  const lines = rows.map(r => GEN_COLS.map(c => r[c] ?? '').join(','));
+  return [header, ...lines].join('\n');
+}
+
+function slugify(text) {
+  return normalize(text).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+}
+
+function descargarCSVPreview() {
+  if (!genPreviewRows.length) return;
+  const col = data.colegios.find(c => c.id === genColegioId);
+  const csv = buildUsuariosCSV(genPreviewRows);
+  const filename = `usuarios_${slugify(col ? col.nombre : 'colegio')}_${slugify(genAnioSel || '')}.csv`;
+  downloadFile(csv, filename, 'text/csv;charset=utf-8;');
+  showToast('CSV descargado ✓');
+}
+
+function renderGenYearsSummary() {
+  const body = document.getElementById('gen-years-body');
+  const empty = document.getElementById('gen-years-empty');
+  if (!genColegioId) { body.innerHTML = ''; empty.style.display = ''; return; }
+
+  const mine = data.participantes.filter(p => p.colegioId === genColegioId);
+  const anios = [...new Set(mine.map(p => p.anio))].sort((a,b) => (a||'').localeCompare(b||''));
+
+  if (!anios.length) { body.innerHTML = ''; empty.style.display = ''; return; }
+  empty.style.display = 'none';
+
+  body.innerHTML = anios.map(anio => {
+    const rows = mine.filter(p => p.anio === anio).sort((a,b) => a.username.localeCompare(b.username));
+    const first = rows[0].username, last = rows[rows.length - 1].username;
+    return `<tr>
+      <td><b>${esc(anio)}</b></td>
+      <td>${rows.length}</td>
+      <td><code>${esc(first)} – ${esc(last)}</code></td>
+      <td class="row-actions">
+        <button class="btn btn-ghost" data-anio="${esc(anio)}" onclick="verEditarGenYear(this.dataset.anio)">Ver/Editar</button>
+        <button class="btn btn-ghost" data-anio="${esc(anio)}" onclick="descargarCSVGenYear(this.dataset.anio)">⬇ CSV</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function verEditarGenYear(anio) {
+  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio)
+    .sort((a,b) => a.username.localeCompare(b.username));
+  if (!rows.length) return;
+
+  document.getElementById('gen-anio').value = anio;
+  onGenAnioChange();
+  if (!genAsig) { showToast('No se encontró la asignación de este año'); return; }
+
+  genPreviewRows = rows.map(p => ({
+    username: p.username, password: p.password,
+    firstname: `${p.username} ${p.nombres}`,
+    lastname: p.apellidos, email: p.email,
+    city: p.city, country: p.country, course1: p.course1,
+    group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended
+  }));
+  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio };
+  renderGenPreviewTable();
+  const card = document.getElementById('gen-preview-card');
+  card.style.display = '';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function descargarCSVGenYear(anio) {
+  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio);
+  if (!rows.length) return;
+  const csvRows = rows.map(p => ({
+    username: p.username, password: p.password,
+    firstname: `${p.username} ${p.nombres}`, lastname: p.apellidos,
+    email: p.email, city: p.city, country: p.country, course1: p.course1,
+    group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended
+  }));
+  const col = data.colegios.find(c => c.id === genColegioId);
+  const csv = buildUsuariosCSV(csvRows);
+  downloadFile(csv, `usuarios_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}.csv`, 'text/csv;charset=utf-8;');
+  showToast('CSV descargado ✓');
+}
+
+/* ════════════════════════════════════════════════════════════
+   PARTICIPANTES (dentro del detalle de un colegio)
+   ════════════════════════════════════════════════════════════ */
+function renderCollegeParticipantes(colegioId) {
+  const sel = document.getElementById('cd-part-anio');
+  const wrap = document.getElementById('cd-part-selector-wrap');
+  const tableWrap = document.querySelector('#cd-participantes-card .table-wrap');
+  const actions = document.getElementById('cd-part-actions');
+  const empty = document.getElementById('cd-part-empty');
+
+  const anios = [...new Set(data.participantes.filter(p => p.colegioId === colegioId).map(p => p.anio))]
+    .sort((a,b) => (a||'').localeCompare(b||''));
+
+  if (!anios.length) {
+    wrap.style.display = 'none';
+    tableWrap.style.display = 'none';
+    actions.style.display = 'none';
+    empty.style.display = '';
+    return;
+  }
+  wrap.style.display = '';
+  tableWrap.style.display = '';
+  actions.style.display = '';
+  empty.style.display = 'none';
+
+  const prevSel = sel.value;
+  sel.innerHTML = anios.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  if (prevSel && anios.includes(prevSel)) sel.value = prevSel;
+
+  renderCollegeParticipantesTable();
+}
+
+function renderCollegeParticipantesTable() {
+  if (!currentCollegeId) return;
+  const anio = document.getElementById('cd-part-anio').value;
+  const body = document.getElementById('cd-part-body');
+  const rows = data.participantes
+    .filter(p => p.colegioId === currentCollegeId && p.anio === anio)
+    .sort((a,b) => a.username.localeCompare(b.username));
+  body.innerHTML = rows.map(p => `<tr>
+    <td><code>${esc(p.username)}</code></td>
+    <td>${esc(p.password)}</td>
+    <td>${esc(p.nombres)}</td>
+    <td>${esc(p.apellidos)}</td>
+  </tr>`).join('');
+}
+
+function buildParticipantesCSV(rows) {
+  const header = 'usuario,clave,nombres,apellidos';
+  const lines = rows.map(p => [p.username, p.password, p.nombres, p.apellidos].join(','));
+  return [header, ...lines].join('\n');
+}
+
+function descargarCSVParticipantesColegio() {
+  if (!currentCollegeId) return;
+  const anio = document.getElementById('cd-part-anio').value;
+  const rows = data.participantes.filter(p => p.colegioId === currentCollegeId && p.anio === anio);
+  if (!rows.length) return;
+  const col = data.colegios.find(c => c.id === currentCollegeId);
+  const csv = buildParticipantesCSV(rows);
+  downloadFile(csv, `participantes_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}.csv`, 'text/csv;charset=utf-8;');
+  showToast('CSV descargado ✓');
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -756,6 +1131,7 @@ function importBackup(event) {
         colegios: parsed.colegios || [],
         cursos: parsed.cursos || [],
         asignaciones: parsed.asignaciones || [],
+        participantes: parsed.participantes || [],
         trash: parsed.trash || { colegios: [], cursos: [], asignaciones: [] }
       };
       saveData();

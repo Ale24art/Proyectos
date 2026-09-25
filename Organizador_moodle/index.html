@@ -58,6 +58,10 @@
     <span class="nav-icon">🏫</span>
     Colegios
   </button>
+  <button class="nav-item" onclick="showView('generador')" data-view="generador">
+    <span class="nav-icon">🆔</span>
+    Generador de usuarios
+  </button>
   <button class="nav-item" onclick="showView('cursos')" data-view="cursos">
     <span class="nav-icon">⚙️</span>
     Cursos modelo
@@ -220,6 +224,126 @@
           Aún no hay cursos copiados para este colegio. Usa "Agregar año/curso" para registrar el primero.
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px" id="cd-participantes-card">
+        <div class="card-title">Participantes</div>
+        <div class="form-field" style="max-width:260px;margin-bottom:14px" id="cd-part-selector-wrap">
+          <label>Año / Grado</label>
+          <select id="cd-part-anio" onchange="renderCollegeParticipantesTable()"></select>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Usuario</th><th>Clave</th><th>Nombres</th><th>Apellidos</th></tr></thead>
+            <tbody id="cd-part-body"></tbody>
+          </table>
+        </div>
+        <div class="modal-actions" style="justify-content:flex-start;margin-top:12px" id="cd-part-actions">
+          <button class="btn btn-ghost" onclick="descargarCSVParticipantesColegio()">⬇ Descargar CSV</button>
+        </div>
+        <div class="empty-state" id="cd-part-empty" style="display:none">
+          Aún no se han generado usuarios para este colegio. Ve a Generador de usuarios.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ GENERADOR DE USUARIOS ═══════════ -->
+  <div class="view" id="view-generador">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Generador de usuarios</div>
+        <div class="page-subtitle">Crea listas de usuarios Moodle a partir de nombres y apellidos</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-field">
+          <label>Colegio</label>
+          <select id="gen-colegio" onchange="onGenColegioChange()"></select>
+        </div>
+        <div class="form-field">
+          <label>Año / Grado</label>
+          <select id="gen-anio" onchange="onGenAnioChange()"></select>
+        </div>
+      </div>
+
+      <div class="form-grid" id="gen-asig-info" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-field">
+          <label>Curso modelo</label>
+          <input type="text" id="gen-info-curso" readonly />
+        </div>
+        <div class="form-field">
+          <label>Nombre corto</label>
+          <input type="text" id="gen-info-corto" readonly />
+        </div>
+        <div class="form-field">
+          <label>Nivel</label>
+          <input type="text" id="gen-info-nivel" readonly />
+        </div>
+      </div>
+
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-field">
+          <label>Apellidos (un estudiante por línea)</label>
+          <textarea id="gen-apellidos" style="min-height:160px" placeholder="MONTILLA VALERO&#10;PEREZ GOMEZ"></textarea>
+        </div>
+        <div class="form-field">
+          <label>Nombres (mismo orden que Apellidos)</label>
+          <textarea id="gen-nombres" style="min-height:160px" placeholder="JOSE ALEJANDRO&#10;MARIA FERNANDA"></textarea>
+        </div>
+      </div>
+
+      <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:6px">
+        <div class="form-field">
+          <label>Contraseña</label>
+          <input type="text" id="gen-password" value="1234" />
+        </div>
+        <div class="form-field">
+          <label>Ciudad</label>
+          <input type="text" id="gen-ciudad" placeholder="Ej: Acarigua" />
+        </div>
+        <div class="form-field">
+          <label>Grupo (opcional)</label>
+          <input type="text" id="gen-grupo" placeholder="Opcional" />
+        </div>
+      </div>
+
+      <div id="gen-error" class="gen-error" style="display:none"></div>
+
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
+        <button class="btn btn-primary" onclick="generarListaUsuarios()">Generar lista</button>
+      </div>
+    </div>
+
+    <div class="card" id="gen-preview-card" style="display:none">
+      <div class="card-title">Vista previa (editable)</div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Usuario</th><th>Contraseña</th><th>Nombre completo</th><th>Apellidos</th><th>Email</th>
+              <th>Ciudad</th><th>País</th><th>Curso corto</th><th>Grupo</th><th>Rol</th><th>Periodo</th><th>Suspendido</th>
+            </tr>
+          </thead>
+          <tbody id="gen-preview-body"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:14px">
+        <button class="btn btn-primary" onclick="guardarListaUsuarios()">Guardar lista</button>
+        <button class="btn btn-ghost" onclick="descargarCSVPreview()">⬇ Descargar CSV</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Años ya generados para este colegio</div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Año / Grado</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
+          <tbody id="gen-years-body"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="gen-years-empty" style="display:none">Aún no hay listas generadas para este colegio.</div>
     </div>
   </div>
 
