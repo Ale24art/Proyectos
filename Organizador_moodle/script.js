@@ -86,7 +86,7 @@ function freshData() {
     cursos: DEFAULT_CURSOS.map(c => ({ id: uid(), nombre: c.nombre, nivel: c.nivel })),
     asignaciones: [],
     participantes: [],
-    trash: { colegios: [], cursos: [], asignaciones: [] }
+    trash: { colegios: [], cursos: [], asignaciones: [], participantes: [] }
   };
 }
 
@@ -95,12 +95,18 @@ function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) { data = freshData(); saveData(); return; }
     const parsed = JSON.parse(raw);
+    const trash = parsed.trash || {};
     data = {
       colegios: parsed.colegios || [],
       cursos: parsed.cursos || [],
       asignaciones: parsed.asignaciones || [],
       participantes: parsed.participantes || [],
-      trash: parsed.trash || { colegios: [], cursos: [], asignaciones: [] }
+      trash: {
+        colegios: trash.colegios || [],
+        cursos: trash.cursos || [],
+        asignaciones: trash.asignaciones || [],
+        participantes: trash.participantes || []
+      }
     };
   } catch (e) {
     console.error('Error cargando datos, se crean datos nuevos.', e);
@@ -775,7 +781,7 @@ function generarListaUsuarios() {
   }
 
   genPreviewRows = rows;
-  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio: genAnioSel };
+  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio: genAnioSel, group1 };
   renderGenPreviewTable();
   document.getElementById('gen-preview-card').style.display = '';
 }
@@ -818,11 +824,13 @@ function onGenUsernameEdit(i, value) {
 
 function guardarListaUsuarios() {
   if (!genPreviewRows.length || !genPreviewCtx) { showToast('Genera una lista primero'); return; }
-  const { colegioId, cursoId, anio } = genPreviewCtx;
-  const existing = data.participantes.filter(p => p.colegioId === colegioId && p.anio === anio);
+  const { colegioId, cursoId, anio, group1 } = genPreviewCtx;
+  const grupoKey = group1 || '';
+  const existing = data.participantes.filter(p => p.colegioId === colegioId && p.cursoId === cursoId && p.anio === anio && (p.group1||'') === grupoKey);
   if (existing.length) {
-    if (!confirm('¿Reemplazar la lista ya generada para este año?')) return;
-    data.participantes = data.participantes.filter(p => !(p.colegioId === colegioId && p.anio === anio));
+    const grupoTxt = grupoKey ? ` (grupo "${grupoKey}")` : '';
+    if (!confirm(`¿Reemplazar la lista ya generada para este año${grupoTxt}?`)) return;
+    data.participantes = data.participantes.filter(p => !(p.colegioId === colegioId && p.cursoId === cursoId && p.anio === anio && (p.group1||'') === grupoKey));
   }
   const fecha = todayStr();
   genPreviewRows.forEach(r => {
@@ -871,28 +879,39 @@ function renderGenYearsSummary() {
   if (!genColegioId) { body.innerHTML = ''; empty.style.display = ''; return; }
 
   const mine = data.participantes.filter(p => p.colegioId === genColegioId);
-  const anios = [...new Set(mine.map(p => p.anio))].sort((a,b) => (a||'').localeCompare(b||''));
+  const groupsMap = {};
+  mine.forEach(p => {
+    const grupoKey = p.group1 || '';
+    const key = (p.anio||'') + ' ' + grupoKey;
+    if (!groupsMap[key]) groupsMap[key] = { anio: p.anio, grupo: grupoKey, rows: [] };
+    groupsMap[key].rows.push(p);
+  });
+  const groups = Object.values(groupsMap).sort((a,b) =>
+    (a.anio||'').localeCompare(b.anio||'') || (a.grupo||'').localeCompare(b.grupo||''));
 
-  if (!anios.length) { body.innerHTML = ''; empty.style.display = ''; return; }
+  if (!groups.length) { body.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
-  body.innerHTML = anios.map(anio => {
-    const rows = mine.filter(p => p.anio === anio).sort((a,b) => a.username.localeCompare(b.username));
+  body.innerHTML = groups.map(g => {
+    const rows = [...g.rows].sort((a,b) => a.username.localeCompare(b.username));
     const first = rows[0].username, last = rows[rows.length - 1].username;
     return `<tr>
-      <td><b>${esc(anio)}</b></td>
+      <td><b>${esc(g.anio)}</b></td>
+      <td>${esc(g.grupo || '—')}</td>
       <td>${rows.length}</td>
       <td><code>${esc(first)} – ${esc(last)}</code></td>
       <td class="row-actions">
-        <button class="btn btn-ghost" data-anio="${esc(anio)}" onclick="verEditarGenYear(this.dataset.anio)">Ver/Editar</button>
-        <button class="btn btn-ghost" data-anio="${esc(anio)}" onclick="descargarCSVGenYear(this.dataset.anio)">⬇ CSV</button>
+        <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="verEditarGenYear(this.dataset.anio, this.dataset.grupo)">Ver/Editar</button>
+        <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="descargarCSVGenYear(this.dataset.anio, this.dataset.grupo)">⬇ CSV</button>
+        <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="eliminarGenLista(this.dataset.anio, this.dataset.grupo)">🗑 Eliminar</button>
       </td>
     </tr>`;
   }).join('');
 }
 
-function verEditarGenYear(anio) {
-  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio)
+function verEditarGenYear(anio, grupo) {
+  grupo = grupo || '';
+  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio && (p.group1||'') === grupo)
     .sort((a,b) => a.username.localeCompare(b.username));
   if (!rows.length) return;
 
@@ -907,15 +926,16 @@ function verEditarGenYear(anio) {
     city: p.city, country: p.country, course1: p.course1,
     group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended
   }));
-  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio };
+  genPreviewCtx = { colegioId: genColegioId, cursoId: rows[0].cursoId || genAsig.cursoId, anio, group1: grupo };
   renderGenPreviewTable();
   const card = document.getElementById('gen-preview-card');
   card.style.display = '';
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function descargarCSVGenYear(anio) {
-  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio);
+function descargarCSVGenYear(anio, grupo) {
+  grupo = grupo || '';
+  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio && (p.group1||'') === grupo);
   if (!rows.length) return;
   const csvRows = rows.map(p => ({
     username: p.username, password: p.password,
@@ -925,8 +945,34 @@ function descargarCSVGenYear(anio) {
   }));
   const col = data.colegios.find(c => c.id === genColegioId);
   const csv = buildUsuariosCSV(csvRows);
-  downloadFile(csv, `usuarios_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}.csv`, 'text/csv;charset=utf-8;');
+  const grupoSuffix = grupo ? `_${slugify(grupo)}` : '';
+  downloadFile(csv, `usuarios_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}${grupoSuffix}.csv`, 'text/csv;charset=utf-8;');
   showToast('CSV descargado ✓');
+}
+
+function eliminarGenLista(anio, grupo) {
+  grupo = grupo || '';
+  const rows = data.participantes.filter(p => p.colegioId === genColegioId && p.anio === anio && (p.group1||'') === grupo);
+  if (!rows.length) return;
+  const grupoTxt = grupo ? ` ${grupo}` : '';
+  if (!confirm(`¿Eliminar la lista de ${anio}${grupoTxt}? Esto moverá ${rows.length} estudiantes a la Papelera.`)) return;
+
+  data.trash.participantes.push({
+    id: uid(),
+    colegioId: genColegioId,
+    cursoId: rows[0].cursoId,
+    anio,
+    grupo,
+    fechaEliminacion: todayStr(),
+    estudiantes: rows
+  });
+  data.participantes = data.participantes.filter(p => !(p.colegioId === genColegioId && p.anio === anio && (p.group1||'') === grupo));
+  saveData();
+  renderGenYearsSummary();
+  if (currentCollegeId === genColegioId) renderCollegeParticipantes(genColegioId);
+  renderTrash();
+  updateTrashBadge();
+  showToast('Lista movida a la papelera');
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -958,15 +1004,43 @@ function renderCollegeParticipantes(colegioId) {
   sel.innerHTML = anios.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
   if (prevSel && anios.includes(prevSel)) sel.value = prevSel;
 
+  onCdPartAnioChange();
+}
+
+function onCdPartAnioChange() {
+  if (!currentCollegeId) return;
+  const anio = document.getElementById('cd-part-anio').value;
+  const grupoWrap = document.getElementById('cd-part-grupo-wrap');
+  const grupoSel = document.getElementById('cd-part-grupo');
+
+  const grupos = [...new Set(data.participantes
+    .filter(p => p.colegioId === currentCollegeId && p.anio === anio)
+    .map(p => p.group1 || ''))]
+    .sort((a,b) => a.localeCompare(b));
+
+  if (grupos.length > 1) {
+    const prevGrupo = grupoSel.value;
+    grupoSel.innerHTML = `<option value="">Todos</option>` + grupos.map(g => `<option value="${esc(g)}">${esc(g || '—')}</option>`).join('');
+    grupoSel.value = grupos.includes(prevGrupo) ? prevGrupo : '';
+    grupoWrap.style.display = '';
+  } else {
+    grupoSel.innerHTML = '';
+    grupoWrap.style.display = 'none';
+  }
+
   renderCollegeParticipantesTable();
 }
 
 function renderCollegeParticipantesTable() {
   if (!currentCollegeId) return;
   const anio = document.getElementById('cd-part-anio').value;
+  const grupoWrap = document.getElementById('cd-part-grupo-wrap');
+  const grupoSel = document.getElementById('cd-part-grupo');
+  const grupo = grupoWrap.style.display !== 'none' ? grupoSel.value : '';
+
   const body = document.getElementById('cd-part-body');
   const rows = data.participantes
-    .filter(p => p.colegioId === currentCollegeId && p.anio === anio)
+    .filter(p => p.colegioId === currentCollegeId && p.anio === anio && (grupo === '' || (p.group1||'') === grupo))
     .sort((a,b) => a.username.localeCompare(b.username));
   body.innerHTML = rows.map(p => `<tr>
     <td><code>${esc(p.username)}</code></td>
@@ -985,11 +1059,15 @@ function buildParticipantesCSV(rows) {
 function descargarCSVParticipantesColegio() {
   if (!currentCollegeId) return;
   const anio = document.getElementById('cd-part-anio').value;
-  const rows = data.participantes.filter(p => p.colegioId === currentCollegeId && p.anio === anio);
+  const grupoWrap = document.getElementById('cd-part-grupo-wrap');
+  const grupoSel = document.getElementById('cd-part-grupo');
+  const grupo = grupoWrap.style.display !== 'none' ? grupoSel.value : '';
+  const rows = data.participantes.filter(p => p.colegioId === currentCollegeId && p.anio === anio && (grupo === '' || (p.group1||'') === grupo));
   if (!rows.length) return;
   const col = data.colegios.find(c => c.id === currentCollegeId);
   const csv = buildParticipantesCSV(rows);
-  downloadFile(csv, `participantes_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}.csv`, 'text/csv;charset=utf-8;');
+  const grupoSuffix = grupo ? `_${slugify(grupo)}` : '';
+  downloadFile(csv, `participantes_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}${grupoSuffix}.csv`, 'text/csv;charset=utf-8;');
   showToast('CSV descargado ✓');
 }
 
@@ -1127,12 +1205,18 @@ function importBackup(event) {
         throw new Error('Formato no válido');
       }
       if (!confirm('Esto reemplazará todos los datos actuales en este navegador con los del archivo. ¿Continuar?')) return;
+      const trash = parsed.trash || {};
       data = {
         colegios: parsed.colegios || [],
         cursos: parsed.cursos || [],
         asignaciones: parsed.asignaciones || [],
         participantes: parsed.participantes || [],
-        trash: parsed.trash || { colegios: [], cursos: [], asignaciones: [] }
+        trash: {
+          colegios: trash.colegios || [],
+          cursos: trash.cursos || [],
+          asignaciones: trash.asignaciones || [],
+          participantes: trash.participantes || []
+        }
       };
       saveData();
       renderAll();
@@ -1161,19 +1245,20 @@ function resetCatalogs() {
    PAPELERA
    ════════════════════════════════════════════════════════════ */
 function updateTrashBadge() {
-  const total = data.trash.colegios.length + data.trash.cursos.length + data.trash.asignaciones.length;
+  const total = data.trash.colegios.length + data.trash.cursos.length + data.trash.asignaciones.length + data.trash.participantes.length;
   const badge = document.getElementById('trash-count-badge');
   if (total > 0) { badge.textContent = total; badge.style.display = ''; }
   else badge.style.display = 'none';
 }
 
 function renderTrash() {
-  const tCol = data.trash.colegios, tCur = data.trash.cursos, tAsig = data.trash.asignaciones;
-  const total = tCol.length + tCur.length + tAsig.length;
+  const tCol = data.trash.colegios, tCur = data.trash.cursos, tAsig = data.trash.asignaciones, tPart = data.trash.participantes;
+  const total = tCol.length + tCur.length + tAsig.length + tPart.length;
 
   document.getElementById('trash-colegios-section').style.display = tCol.length ? '' : 'none';
   document.getElementById('trash-cursos-section').style.display = tCur.length ? '' : 'none';
   document.getElementById('trash-asig-section').style.display = tAsig.length ? '' : 'none';
+  document.getElementById('trash-part-section').style.display = tPart.length ? '' : 'none';
   document.getElementById('trash-empty').style.display = total ? 'none' : '';
 
   document.getElementById('trash-colegios-list').innerHTML = tCol.map(c => `
@@ -1205,6 +1290,18 @@ function renderTrash() {
       <div class="trash-item-actions">
         <button class="btn btn-ghost" onclick="restoreAsig('${a.id}')">↩ Restaurar</button>
         <button class="btn btn-red" onclick="permaDeleteAsig('${a.id}')">Eliminar para siempre</button>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('trash-part-list').innerHTML = tPart.map(t => `
+    <div class="trash-item">
+      <div>
+        <div class="trash-item-main">${esc(colMap[t.colegioId]?.nombre || 'Colegio eliminado')} · ${esc(t.anio)}${t.grupo ? ' · Grupo ' + esc(t.grupo) : ''}</div>
+        <div class="trash-item-sub">${t.estudiantes.length} estudiante(s) · Eliminado ${fmtDate(t.fechaEliminacion)}</div>
+      </div>
+      <div class="trash-item-actions">
+        <button class="btn btn-ghost" onclick="restoreGenLista('${t.id}')">↩ Restaurar</button>
+        <button class="btn btn-red" onclick="permaDeleteGenLista('${t.id}')">Eliminar para siempre</button>
       </div>
     </div>`).join('');
 }
@@ -1248,10 +1345,23 @@ function permaDeleteAsig(id) {
   saveData(); renderTrash(); updateTrashBadge(); showToast('Eliminado permanentemente');
 }
 
+function restoreGenLista(id) {
+  const idx = data.trash.participantes.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const [item] = data.trash.participantes.splice(idx, 1);
+  data.participantes.push(...item.estudiantes);
+  saveData(); renderAll(); if (currentCollegeId) renderCollegeDetail(); showToast('Lista restaurada ✓');
+}
+function permaDeleteGenLista(id) {
+  if (!confirm('Esta acción no se puede deshacer. ¿Eliminar para siempre?')) return;
+  data.trash.participantes = data.trash.participantes.filter(t => t.id !== id);
+  saveData(); renderTrash(); updateTrashBadge(); showToast('Eliminado permanentemente');
+}
+
 function emptyTrash() {
-  const total = data.trash.colegios.length + data.trash.cursos.length + data.trash.asignaciones.length;
+  const total = data.trash.colegios.length + data.trash.cursos.length + data.trash.asignaciones.length + data.trash.participantes.length;
   if (!total) return;
   if (!confirm(`Se eliminarán ${total} elemento(s) para siempre. ¿Continuar?`)) return;
-  data.trash = { colegios: [], cursos: [], asignaciones: [] };
+  data.trash = { colegios: [], cursos: [], asignaciones: [], participantes: [] };
   saveData(); renderTrash(); updateTrashBadge(); showToast('Papelera vaciada');
 }

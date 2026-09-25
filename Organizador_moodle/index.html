@@ -227,9 +227,15 @@
 
       <div class="card" style="margin-top:16px" id="cd-participantes-card">
         <div class="card-title">Participantes</div>
-        <div class="form-field" style="max-width:260px;margin-bottom:14px" id="cd-part-selector-wrap">
-          <label>Año / Grado</label>
-          <select id="cd-part-anio" onchange="renderCollegeParticipantesTable()"></select>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;max-width:520px;margin-bottom:14px" id="cd-part-selector-wrap">
+          <div class="form-field">
+            <label>Año / Grado</label>
+            <select id="cd-part-anio" onchange="onCdPartAnioChange()"></select>
+          </div>
+          <div class="form-field" id="cd-part-grupo-wrap" style="display:none">
+            <label>Grupo</label>
+            <select id="cd-part-grupo" onchange="renderCollegeParticipantesTable()"></select>
+          </div>
         </div>
         <div class="table-wrap">
           <table class="data-table">
@@ -339,7 +345,7 @@
       <div class="card-title">Años ya generados para este colegio</div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Año / Grado</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
+          <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
           <tbody id="gen-years-body"></tbody>
         </table>
       </div>
@@ -473,6 +479,11 @@
     <div class="card" id="trash-asig-section">
       <div class="card-title">Cursos copiados eliminados</div>
       <div id="trash-asig-list"></div>
+    </div>
+
+    <div class="card" id="trash-part-section">
+      <div class="card-title">Listas de participantes eliminadas</div>
+      <div id="trash-part-list"></div>
     </div>
 
     <div class="card" id="trash-cursos-section">
