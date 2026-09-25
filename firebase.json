@@ -1,0 +1,10 @@
+{
+  "hosting": {
+    "public": "Organizador_moodle",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}
