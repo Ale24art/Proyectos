@@ -79,6 +79,34 @@ function ordinalWord(n) {
   return map[n] || (n + 'th');
 }
 
+function parseUsername(username) {
+  const m = /^([a-zA-Z]+)(\d+)$/.exec(String(username || '').trim());
+  if (!m) return null;
+  return { prefix: m[1], num: parseInt(m[2], 10) };
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* ignorado, el salto real viene con \n */ }
+      else field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
 /* ── PERSISTENCIA ── */
 function freshData() {
   return {
@@ -328,34 +356,45 @@ function renderCollegeDetail() {
   const badges = s.niveles.map(n => `<span class="badge ${n==='media'?'badge-media':'badge-primaria'}">${NIVEL_LABEL[n]}</span>`).join('');
   document.getElementById('cd-badges').innerHTML = badges || `<span class="badge badge-count">Sin nivel asignado aún</span>`;
 
-  const body = document.getElementById('cd-asig-body');
-  const empty = document.getElementById('cd-asig-empty');
   const asigsSorted = [...s.asigs].sort((a,b) => (a.anio||'').localeCompare(b.anio||''));
+  const mediaRows = asigsSorted.filter(a => (cursoMap[a.cursoId]||{}).nivel === 'media');
+  const primariaRows = asigsSorted.filter(a => (cursoMap[a.cursoId]||{}).nivel === 'primaria');
 
-  if (!asigsSorted.length) {
-    body.innerHTML = ''; empty.style.display = '';
-  } else {
-    empty.style.display = 'none';
-    body.innerHTML = asigsSorted.map(a => {
-      const curso = cursoMap[a.cursoId];
-      const nivel = curso ? curso.nivel : null;
-      return `<tr>
-        <td><b>${esc(a.anio)}</b></td>
-        <td>${esc(curso ? curso.nombre : '—')}</td>
-        <td>${nivel ? `<span class="badge ${nivel==='media'?'badge-media':'badge-primaria'}">${nivel==='media'?'Media':'Primaria'}</span>` : '—'}</td>
-        <td>${esc(a.nombreCompleto)}</td>
-        <td><code>${esc(a.nombreCorto)}</code></td>
-        <td><b>${Number(a.clases)||0}</b></td>
-        <td>${fmtDate(a.fecha)}</td>
-        <td class="row-actions">
-          <button class="icon-btn" title="Editar" onclick="openAsigModal('${a.id}')">✎</button>
-          <button class="icon-btn danger" title="Eliminar" onclick="deleteAsig('${a.id}')">🗑</button>
-        </td>
-      </tr>`;
-    }).join('');
-  }
+  renderAsigLevelTable(mediaRows, cursoMap, 'cd-asig-media-body', 'cd-asig-media-empty', 'cd-asig-media-wrap');
+  renderAsigLevelTable(primariaRows, cursoMap, 'cd-asig-primaria-body', 'cd-asig-primaria-empty', 'cd-asig-primaria-wrap');
 
   renderCollegeParticipantes(col.id);
+}
+
+function renderAsigLevelTable(rows, cursoMap, bodyId, emptyId, wrapId) {
+  const body = document.getElementById(bodyId);
+  const empty = document.getElementById(emptyId);
+  const wrap = document.getElementById(wrapId);
+  if (!rows.length) {
+    body.innerHTML = '';
+    empty.style.display = '';
+    wrap.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  wrap.style.display = '';
+  body.innerHTML = rows.map(a => {
+    const curso = cursoMap[a.cursoId];
+    const nivel = curso ? curso.nivel : null;
+    return `<tr>
+      <td><b>${esc(a.anio)}</b></td>
+      <td>${esc(curso ? curso.nombre : '—')}</td>
+      <td>${nivel ? `<span class="badge ${nivel==='media'?'badge-media':'badge-primaria'}">${nivel==='media'?'Media':'Primaria'}</span>` : '—'}</td>
+      <td>${esc(a.nombreCompleto)}</td>
+      <td><code>${esc(a.nombreCorto)}</code></td>
+      <td><b>${Number(a.clases)||0}</b></td>
+      <td>${fmtDate(a.fecha)}</td>
+      <td class="row-actions">
+        <button class="icon-btn" title="Editar" onclick="openAsigModal('${a.id}')">✎</button>
+        <button class="icon-btn danger" title="Eliminar" onclick="deleteAsig('${a.id}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function editCollegeFromDetail() { openCollegeModal(currentCollegeId); }
@@ -660,8 +699,9 @@ function fillGenColegioSelect(selectedId) {
 
 function fillGenAnioSelect(colegioId, selectedAnio) {
   const sel = document.getElementById('gen-anio');
-  const anios = [...new Set(data.asignaciones.filter(a => a.colegioId === colegioId).map(a => a.anio))]
-    .sort((a,b) => (a||'').localeCompare(b||''));
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+  const asigsCollege = data.asignaciones.filter(a => a.colegioId === colegioId);
+  const anios = [...new Set(asigsCollege.map(a => a.anio))];
 
   if (!anios.length) {
     sel.innerHTML = `<option value="">Sin años asignados</option>`;
@@ -669,9 +709,23 @@ function fillGenAnioSelect(colegioId, selectedAnio) {
     genAnioSel = null;
     return;
   }
+
+  const nivelOf = anio => {
+    const a = asigsCollege.find(a => a.anio === anio);
+    return a ? (cursoMap[a.cursoId] || {}).nivel : null;
+  };
+  const numOf = anio => {
+    const m = String(anio || '').match(/\d+/);
+    return m ? parseInt(m[0], 10) : 0;
+  };
+  const media = anios.filter(a => nivelOf(a) === 'media').sort((a,b) => numOf(a) - numOf(b));
+  const primaria = anios.filter(a => nivelOf(a) === 'primaria').sort((a,b) => numOf(b) - numOf(a));
+  const otros = anios.filter(a => !['media','primaria'].includes(nivelOf(a))).sort((a,b) => (a||'').localeCompare(b||''));
+  const ordered = [...media, ...primaria, ...otros];
+
   sel.disabled = false;
-  sel.innerHTML = anios.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
-  if (selectedAnio && anios.includes(selectedAnio)) sel.value = selectedAnio;
+  sel.innerHTML = ordered.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  if (selectedAnio && ordered.includes(selectedAnio)) sel.value = selectedAnio;
   genAnioSel = sel.value || null;
 }
 
@@ -753,20 +807,27 @@ function generarListaUsuarios() {
   const city = document.getElementById('gen-ciudad').value.trim();
   const group1 = document.getElementById('gen-grupo').value.trim();
 
-  const escPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp('^' + escPrefix + '(\\d+)$');
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+  const curso = cursoMap[genAsig.cursoId];
+  const nivel = curso ? curso.nivel : 'media';
+  const digits = nivel === 'primaria' ? 3 : 4;
+
   let maxNum = 0;
   data.participantes
     .filter(p => p.colegioId === genColegioId)
     .forEach(p => {
-      const m = re.exec(p.username || '');
-      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+      const pNivel = p.nivel || (cursoMap[p.cursoId] || {}).nivel;
+      if (pNivel !== nivel) return;
+      const parsed = parseUsername(p.username);
+      if (parsed && parsed.prefix.toLowerCase() === prefix.toLowerCase()) {
+        maxNum = Math.max(maxNum, parsed.num);
+      }
     });
   const start = maxNum + 1;
 
   const rows = [];
   for (let i = 0; i < maxLen; i++) {
-    const num = String(start + i).padStart(4, '0');
+    const num = String(start + i).padStart(digits, '0');
     const username = prefix + num;
     const nombres = noLines[i];
     rows.push({
@@ -781,9 +842,87 @@ function generarListaUsuarios() {
   }
 
   genPreviewRows = rows;
-  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio: genAnioSel, group1 };
+  genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio: genAnioSel, nivel, group1 };
   renderGenPreviewTable();
   document.getElementById('gen-preview-card').style.display = '';
+}
+
+function onImportCSVClick() {
+  hideGenError();
+  if (!genColegioId) { showGenError('Elige un colegio.'); return; }
+  if (!genAsig) { showGenError('Elige un año/grado con curso asignado para este colegio.'); return; }
+  document.getElementById('gen-import-file').click();
+}
+
+function importarCSVArchivo(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      let text = String(reader.result || '');
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const table = parseCSV(text).filter(r => r.length && r.some(v => (v||'').trim() !== ''));
+      if (table.length < 2) throw new Error('CSV vacío o sin filas de datos');
+
+      const header = table[0].map(h => String(h||'').trim().toLowerCase());
+      const idxFirst = header.indexOf('first name');
+      const idxLast = header.indexOf('last name');
+      const idxEmail = header.indexOf('email address');
+      const idxGroups = header.indexOf('groups');
+      if (idxFirst === -1 || idxLast === -1) throw new Error('No se reconocen las columnas "First name" / "Last name"');
+
+      const password = document.getElementById('gen-password').value.trim() || '1234';
+      const city = document.getElementById('gen-ciudad').value.trim();
+      const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+      const curso = cursoMap[genAsig.cursoId];
+      const nivel = curso ? curso.nivel : 'primaria';
+
+      const rows = [];
+      for (let i = 1; i < table.length; i++) {
+        const cols = table[i];
+        const firstRaw = (cols[idxFirst] || '').trim();
+        const lastRaw = (cols[idxLast] || '').trim();
+        const emailRaw = (cols[idxEmail] !== undefined ? cols[idxEmail] : '').trim();
+        const groupRaw = idxGroups !== -1 ? (cols[idxGroups] || '').trim() : '';
+        if (!firstRaw && !lastRaw) continue;
+
+        const spaceIdx = firstRaw.indexOf(' ');
+        let username = spaceIdx === -1 ? firstRaw : firstRaw.slice(0, spaceIdx);
+        const nombres = spaceIdx === -1 ? '' : firstRaw.slice(spaceIdx + 1).trim();
+
+        if (!/^([a-zA-Z]+)(\d+)$/.test(username)) {
+          const atIdx = emailRaw.indexOf('@');
+          if (atIdx !== -1) username = emailRaw.slice(0, atIdx);
+        }
+        username = username.trim();
+        if (!username) continue;
+
+        rows.push({
+          username, password,
+          firstname: nombres ? `${username} ${nombres}` : username,
+          lastname: lastRaw,
+          email: `${username}@tecno.com`,
+          city, country: 'Venezuela',
+          course1: genAsig.nombreCorto,
+          group1: groupRaw, role1: 'student', enrolperiod1: '365d', suspended: '0'
+        });
+      }
+
+      if (!rows.length) throw new Error('No se encontraron filas válidas en el archivo');
+
+      genPreviewRows = rows;
+      genPreviewCtx = { colegioId: genColegioId, cursoId: genAsig.cursoId, anio: genAnioSel, nivel, group1: '' };
+      renderGenPreviewTable();
+      document.getElementById('gen-preview-card').style.display = '';
+      showToast(`CSV importado: ${rows.length} estudiante(s) ✓`);
+    } catch (e) {
+      console.error(e);
+      showGenError('No se pudo importar el archivo. Verifica que sea el CSV exportado de la otra plataforma.');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
 }
 
 function renderGenPreviewTable() {
@@ -824,14 +963,18 @@ function onGenUsernameEdit(i, value) {
 
 function guardarListaUsuarios() {
   if (!genPreviewRows.length || !genPreviewCtx) { showToast('Genera una lista primero'); return; }
-  const { colegioId, cursoId, anio, group1 } = genPreviewCtx;
-  const grupoKey = group1 || '';
-  const existing = data.participantes.filter(p => p.colegioId === colegioId && p.cursoId === cursoId && p.anio === anio && (p.group1||'') === grupoKey);
-  if (existing.length) {
-    const grupoTxt = grupoKey ? ` (grupo "${grupoKey}")` : '';
-    if (!confirm(`¿Reemplazar la lista ya generada para este año${grupoTxt}?`)) return;
-    data.participantes = data.participantes.filter(p => !(p.colegioId === colegioId && p.cursoId === cursoId && p.anio === anio && (p.group1||'') === grupoKey));
+  const { colegioId, cursoId, anio, nivel } = genPreviewCtx;
+
+  const gruposPresentes = [...new Set(genPreviewRows.map(r => r.group1 || ''))];
+  const conflictos = gruposPresentes.filter(g =>
+    data.participantes.some(p => p.colegioId === colegioId && p.cursoId === cursoId && p.anio === anio && (p.group1||'') === g));
+  if (conflictos.length) {
+    const grupoTxt = conflictos.map(g => g ? `"${g}"` : '(sin grupo)').join(', ');
+    if (!confirm(`¿Reemplazar la lista ya generada para este año en el/los grupo(s) ${grupoTxt}?`)) return;
   }
+  data.participantes = data.participantes.filter(p =>
+    !(p.colegioId === colegioId && p.cursoId === cursoId && p.anio === anio && gruposPresentes.includes(p.group1||'')));
+
   const fecha = todayStr();
   genPreviewRows.forEach(r => {
     let nombres = r.firstname;
@@ -839,7 +982,7 @@ function guardarListaUsuarios() {
       nombres = r.firstname.slice(r.username.length + 1);
     }
     data.participantes.push({
-      id: uid(), colegioId, cursoId, anio,
+      id: uid(), colegioId, cursoId, anio, nivel,
       username: r.username, password: r.password,
       nombres, apellidos: r.lastname,
       email: r.email, city: r.city, country: r.country,
@@ -926,7 +1069,9 @@ function verEditarGenYear(anio, grupo) {
     city: p.city, country: p.country, course1: p.course1,
     group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended
   }));
-  genPreviewCtx = { colegioId: genColegioId, cursoId: rows[0].cursoId || genAsig.cursoId, anio, group1: grupo };
+  const cursoIdCtx = rows[0].cursoId || genAsig.cursoId;
+  const nivelCtx = rows[0].nivel || (data.cursos.find(c => c.id === cursoIdCtx) || {}).nivel;
+  genPreviewCtx = { colegioId: genColegioId, cursoId: cursoIdCtx, anio, nivel: nivelCtx, group1: grupo };
   renderGenPreviewTable();
   const card = document.getElementById('gen-preview-card');
   card.style.display = '';
@@ -981,6 +1126,7 @@ function eliminarGenLista(anio, grupo) {
 function renderCollegeParticipantes(colegioId) {
   const sel = document.getElementById('cd-part-anio');
   const wrap = document.getElementById('cd-part-selector-wrap');
+  const searchWrap = document.getElementById('cd-part-search-wrap');
   const tableWrap = document.querySelector('#cd-participantes-card .table-wrap');
   const actions = document.getElementById('cd-part-actions');
   const empty = document.getElementById('cd-part-empty');
@@ -990,12 +1136,14 @@ function renderCollegeParticipantes(colegioId) {
 
   if (!anios.length) {
     wrap.style.display = 'none';
+    searchWrap.style.display = 'none';
     tableWrap.style.display = 'none';
     actions.style.display = 'none';
     empty.style.display = '';
     return;
   }
   wrap.style.display = '';
+  searchWrap.style.display = '';
   tableWrap.style.display = '';
   actions.style.display = '';
   empty.style.display = 'none';
@@ -1003,6 +1151,7 @@ function renderCollegeParticipantes(colegioId) {
   const prevSel = sel.value;
   sel.innerHTML = anios.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
   if (prevSel && anios.includes(prevSel)) sel.value = prevSel;
+  document.getElementById('cd-part-search').value = '';
 
   onCdPartAnioChange();
 }
@@ -1037,27 +1186,41 @@ function renderCollegeParticipantesTable() {
   const grupoWrap = document.getElementById('cd-part-grupo-wrap');
   const grupoSel = document.getElementById('cd-part-grupo');
   const grupo = grupoWrap.style.display !== 'none' ? grupoSel.value : '';
+  const q = normalize(document.getElementById('cd-part-search').value.trim());
 
   const body = document.getElementById('cd-part-body');
   const rows = data.participantes
     .filter(p => p.colegioId === currentCollegeId && p.anio === anio && (grupo === '' || (p.group1||'') === grupo))
+    .filter(p => !q || normalize(p.username).includes(q) || normalize(p.nombres).includes(q) || normalize(p.apellidos).includes(q))
     .sort((a,b) => a.username.localeCompare(b.username));
   body.innerHTML = rows.map(p => `<tr>
     <td><code>${esc(p.username)}</code></td>
     <td>${esc(p.password)}</td>
     <td>${esc(p.nombres)}</td>
     <td>${esc(p.apellidos)}</td>
+    <td class="row-actions">
+      <button class="icon-btn" title="Copiar" onclick="copyParticipante('${p.id}', this)">📋</button>
+    </td>
   </tr>`).join('');
 }
 
-function buildParticipantesCSV(rows) {
-  const header = 'usuario,clave,nombres,apellidos';
-  const lines = rows.map(p => [p.username, p.password, p.nombres, p.apellidos].join(','));
-  return [header, ...lines].join('\n');
+function copyParticipante(id, btn) {
+  const p = data.participantes.find(p => p.id === id);
+  if (!p) return;
+  const text = `Estudiante: ${p.nombres} ${p.apellidos}\nUSUARIO: ${String(p.username||'').toUpperCase()}\nCLAVE: ${p.password}`;
+  navigator.clipboard.writeText(text).then(() => {
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = original; }, 1000);
+    }
+    showToast('Copiado al portapapeles ✓');
+  }).catch(() => showToast('⚠ No se pudo copiar al portapapeles'));
 }
 
-function descargarCSVParticipantesColegio() {
+function descargarXLSXParticipantesColegio() {
   if (!currentCollegeId) return;
+  if (typeof XLSX === 'undefined') { showToast('⚠ Falta la librería XLSX (Organizador_moodle/lib/xlsx.full.min.js)'); return; }
   const anio = document.getElementById('cd-part-anio').value;
   const grupoWrap = document.getElementById('cd-part-grupo-wrap');
   const grupoSel = document.getElementById('cd-part-grupo');
@@ -1065,10 +1228,13 @@ function descargarCSVParticipantesColegio() {
   const rows = data.participantes.filter(p => p.colegioId === currentCollegeId && p.anio === anio && (grupo === '' || (p.group1||'') === grupo));
   if (!rows.length) return;
   const col = data.colegios.find(c => c.id === currentCollegeId);
-  const csv = buildParticipantesCSV(rows);
+  const aoa = [['usuario','clave','nombres','apellidos'], ...rows.map(p => [p.username, p.password, p.nombres, p.apellidos])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Participantes');
   const grupoSuffix = grupo ? `_${slugify(grupo)}` : '';
-  downloadFile(csv, `participantes_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}${grupoSuffix}.csv`, 'text/csv;charset=utf-8;');
-  showToast('CSV descargado ✓');
+  XLSX.writeFile(wb, `participantes_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}${grupoSuffix}.xlsx`);
+  showToast('XLSX descargado ✓');
 }
 
 /* ════════════════════════════════════════════════════════════

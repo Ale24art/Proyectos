@@ -202,8 +202,8 @@
       <div class="badges-row" id="cd-badges"></div>
 
       <div class="card" style="margin-top:16px">
-        <div class="card-title">Cursos copiados en este colegio</div>
-        <div class="table-wrap">
+        <div class="card-title">🎓 Cursos copiados · Educación Media</div>
+        <div class="table-wrap" id="cd-asig-media-wrap">
           <table class="data-table">
             <thead>
               <tr>
@@ -217,11 +217,35 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody id="cd-asig-body"></tbody>
+            <tbody id="cd-asig-media-body"></tbody>
           </table>
         </div>
-        <div class="empty-state" id="cd-asig-empty" style="display:none">
-          Aún no hay cursos copiados para este colegio. Usa "Agregar año/curso" para registrar el primero.
+        <div class="empty-state" id="cd-asig-media-empty" style="display:none">
+          Sin cursos de este nivel.
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">🧒 Cursos copiados · Educación Primaria</div>
+        <div class="table-wrap" id="cd-asig-primaria-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Año / Grado</th>
+                <th>Curso modelo</th>
+                <th>Nivel</th>
+                <th>Nombre completo</th>
+                <th>Nombre corto</th>
+                <th>Clases</th>
+                <th>Fecha copia</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cd-asig-primaria-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="cd-asig-primaria-empty" style="display:none">
+          Sin cursos de este nivel.
         </div>
       </div>
 
@@ -237,14 +261,18 @@
             <select id="cd-part-grupo" onchange="renderCollegeParticipantesTable()"></select>
           </div>
         </div>
+        <div class="form-field" id="cd-part-search-wrap" style="max-width:320px;margin-bottom:14px">
+          <label>Buscar</label>
+          <input type="text" id="cd-part-search" placeholder="🔍 Usuario, nombres o apellidos..." oninput="renderCollegeParticipantesTable()">
+        </div>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>Usuario</th><th>Clave</th><th>Nombres</th><th>Apellidos</th></tr></thead>
+            <thead><tr><th>Usuario</th><th>Clave</th><th>Nombres</th><th>Apellidos</th><th></th></tr></thead>
             <tbody id="cd-part-body"></tbody>
           </table>
         </div>
         <div class="modal-actions" style="justify-content:flex-start;margin-top:12px" id="cd-part-actions">
-          <button class="btn btn-ghost" onclick="descargarCSVParticipantesColegio()">⬇ Descargar CSV</button>
+          <button class="btn btn-ghost" onclick="descargarXLSXParticipantesColegio()">⬇ Descargar XLSX</button>
         </div>
         <div class="empty-state" id="cd-part-empty" style="display:none">
           Aún no se han generado usuarios para este colegio. Ve a Generador de usuarios.
@@ -319,6 +347,8 @@
 
       <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
         <button class="btn btn-primary" onclick="generarListaUsuarios()">Generar lista</button>
+        <button class="btn btn-ghost" onclick="onImportCSVClick()">⬆ Importar CSV</button>
+        <input type="file" id="gen-import-file" accept=".csv,text/csv" style="display:none" onchange="importarCSVArchivo(event)">
       </div>
     </div>
 
@@ -605,6 +635,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="lib/xlsx.full.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
