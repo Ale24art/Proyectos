@@ -40,6 +40,11 @@ const DEFAULT_CURSOS = [
 
 const NIVEL_LABEL = { media: "🎓 Educación Media", primaria: "🧒 Educación Primaria" };
 
+function extractAnioNum(anio) {
+  const m = String(anio || '').match(/\d+/);
+  return m ? parseInt(m[0], 10) : 0;
+}
+
 let data = null; // { colegios:[], cursos:[], asignaciones:[], participantes:[], trash:{colegios:[],cursos:[],asignaciones:[]} }
 
 let currentView = 'dashboard';
@@ -714,17 +719,19 @@ function fillGenAnioSelect(colegioId, selectedAnio) {
     const a = asigsCollege.find(a => a.anio === anio);
     return a ? (cursoMap[a.cursoId] || {}).nivel : null;
   };
-  const numOf = anio => {
-    const m = String(anio || '').match(/\d+/);
-    return m ? parseInt(m[0], 10) : 0;
-  };
-  const media = anios.filter(a => nivelOf(a) === 'media').sort((a,b) => numOf(a) - numOf(b));
-  const primaria = anios.filter(a => nivelOf(a) === 'primaria').sort((a,b) => numOf(b) - numOf(a));
+  const media = anios.filter(a => nivelOf(a) === 'media').sort((a,b) => extractAnioNum(a) - extractAnioNum(b));
+  const primaria = anios.filter(a => nivelOf(a) === 'primaria').sort((a,b) => extractAnioNum(b) - extractAnioNum(a));
   const otros = anios.filter(a => !['media','primaria'].includes(nivelOf(a))).sort((a,b) => (a||'').localeCompare(b||''));
   const ordered = [...media, ...primaria, ...otros];
 
+  const optgroupHTML = (label, arr) => arr.length
+    ? `<optgroup label="${label}">${arr.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('')}</optgroup>`
+    : '';
   sel.disabled = false;
-  sel.innerHTML = ordered.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  sel.innerHTML =
+    optgroupHTML('🎓 Educación Media', media) +
+    optgroupHTML('🧒 Educación Primaria', primaria) +
+    otros.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
   if (selectedAnio && ordered.includes(selectedAnio)) sel.value = selectedAnio;
   genAnioSel = sel.value || null;
 }
@@ -1017,24 +1024,57 @@ function descargarCSVPreview() {
 }
 
 function renderGenYearsSummary() {
-  const body = document.getElementById('gen-years-body');
-  const empty = document.getElementById('gen-years-empty');
-  if (!genColegioId) { body.innerHTML = ''; empty.style.display = ''; return; }
+  const noneCard = document.getElementById('gen-years-empty-card');
+  const mediaCard = document.getElementById('gen-years-media-card');
+  const primariaCard = document.getElementById('gen-years-primaria-card');
 
+  const showNone = () => {
+    noneCard.style.display = '';
+    mediaCard.style.display = 'none';
+    primariaCard.style.display = 'none';
+  };
+
+  if (!genColegioId) { showNone(); return; }
+
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
   const mine = data.participantes.filter(p => p.colegioId === genColegioId);
   const groupsMap = {};
   mine.forEach(p => {
     const grupoKey = p.group1 || '';
     const key = (p.anio||'') + ' ' + grupoKey;
-    if (!groupsMap[key]) groupsMap[key] = { anio: p.anio, grupo: grupoKey, rows: [] };
+    if (!groupsMap[key]) groupsMap[key] = { anio: p.anio, grupo: grupoKey, cursoId: p.cursoId, rows: [] };
     groupsMap[key].rows.push(p);
   });
-  const groups = Object.values(groupsMap).sort((a,b) =>
-    (a.anio||'').localeCompare(b.anio||'') || (a.grupo||'').localeCompare(b.grupo||''));
+  const groups = Object.values(groupsMap);
 
-  if (!groups.length) { body.innerHTML = ''; empty.style.display = ''; return; }
+  if (!groups.length) { showNone(); return; }
+
+  noneCard.style.display = 'none';
+  mediaCard.style.display = '';
+  primariaCard.style.display = '';
+
+  const nivelOf = g => (cursoMap[g.cursoId] || {}).nivel;
+  const sortLevel = arr => arr.sort((a,b) =>
+    extractAnioNum(b.anio) - extractAnioNum(a.anio) || (a.grupo||'').localeCompare(b.grupo||''));
+  const mediaGroups = sortLevel(groups.filter(g => nivelOf(g) === 'media'));
+  const primariaGroups = sortLevel(groups.filter(g => nivelOf(g) === 'primaria'));
+
+  renderGenYearsLevelTable(mediaGroups, 'gen-years-media-body', 'gen-years-media-empty', 'gen-years-media-wrap');
+  renderGenYearsLevelTable(primariaGroups, 'gen-years-primaria-body', 'gen-years-primaria-empty', 'gen-years-primaria-wrap');
+}
+
+function renderGenYearsLevelTable(groups, bodyId, emptyId, wrapId) {
+  const body = document.getElementById(bodyId);
+  const empty = document.getElementById(emptyId);
+  const wrap = document.getElementById(wrapId);
+  if (!groups.length) {
+    body.innerHTML = '';
+    empty.style.display = '';
+    wrap.style.display = 'none';
+    return;
+  }
   empty.style.display = 'none';
-
+  wrap.style.display = '';
   body.innerHTML = groups.map(g => {
     const rows = [...g.rows].sort((a,b) => a.username.localeCompare(b.username));
     const first = rows[0].username, last = rows[rows.length - 1].username;

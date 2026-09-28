@@ -371,15 +371,31 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="gen-years-empty-card">
       <div class="card-title">Años ya generados para este colegio</div>
-      <div class="table-wrap">
+      <div class="empty-state" id="gen-years-empty">Aún no hay listas generadas para este colegio.</div>
+    </div>
+
+    <div class="card" id="gen-years-media-card" style="margin-top:16px">
+      <div class="card-title">🎓 Educación Media</div>
+      <div class="table-wrap" id="gen-years-media-wrap">
         <table class="data-table">
           <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
-          <tbody id="gen-years-body"></tbody>
+          <tbody id="gen-years-media-body"></tbody>
         </table>
       </div>
-      <div class="empty-state" id="gen-years-empty" style="display:none">Aún no hay listas generadas para este colegio.</div>
+      <div class="empty-state" id="gen-years-media-empty" style="display:none">Sin listas de este nivel.</div>
+    </div>
+
+    <div class="card" id="gen-years-primaria-card" style="margin-top:16px">
+      <div class="card-title">🧒 Educación Primaria</div>
+      <div class="table-wrap" id="gen-years-primaria-wrap">
+        <table class="data-table">
+          <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
+          <tbody id="gen-years-primaria-body"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="gen-years-primaria-empty" style="display:none">Sin listas de este nivel.</div>
     </div>
   </div>
 
