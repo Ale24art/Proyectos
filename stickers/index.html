@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador de carnets · Cleveland</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪪</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body data-screen="home" data-academy="">
+
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-mark">🪪</div>
+    <div>
+      <div class="logo-text" id="logo-text">Generador<span class="logo-accent"> de carnets</span></div>
+      <div class="logo-sub" id="logo-sub">Cleveland · Moodle</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="academy-chip" id="academy-chip" hidden></span>
+    <button class="btn ghost" id="btn-change" hidden></button>
+    <button class="icon-btn" id="btn-theme" title="Tema / Theme" aria-label="Theme">🌓</button>
+  </div>
+</header>
+
+<!-- ═════ PANTALLA 1: elegir academia ═════ -->
+<main id="screen-home" class="screen">
+  <div class="home-hero">
+    <h1>Generador de carnets<br><span class="h1-sub">ID card generator</span></h1>
+    <p>Elige la academia · Choose the academy</p>
+  </div>
+  <div class="academy-grid">
+    <button class="academy-card" data-pick="cleveland">
+      <div class="mark mark-cleveland" aria-hidden="true"><span></span></div>
+      <div class="academy-name">Cleveland English Institute</div>
+      <div class="academy-desc">Interface and cards in <b>English</b><br>Username · Password</div>
+    </button>
+    <button class="academy-card" data-pick="tecno">
+      <div class="mark mark-tecno" aria-hidden="true">
+        <i style="--c:#976FB0">⚛</i><i style="--c:#3A6BB5">▭</i><i style="--c:#EA5A1E">⚙</i><i style="--c:#84BC24">π</i>
+      </div>
+      <div class="academy-name">TecnoCleveland</div>
+      <div class="academy-desc">Interfaz y carnets en <b>español</b><br>Usuario · Clave</div>
+    </button>
+  </div>
+</main>
+
+<!-- ═════ PANTALLA 2 ═════ -->
+<main id="screen-app" class="screen" hidden>
+  <div class="page-head">
+    <h2 data-i18n="appTitle"></h2>
+    <p data-i18n="appSub"></p>
+  </div>
+
+  <!-- Nueva lista -->
+  <section class="card" id="form-card">
+    <div class="card-head">
+      <h3 id="form-title"></h3>
+      <div class="card-actions">
+        <button class="btn ghost sm" id="btn-example" data-i18n="example"></button>
+        <button class="btn ghost sm" id="btn-clear" data-i18n="clearForm"></button>
+      </div>
+    </div>
+
+    <div class="seg" id="level-seg" role="radiogroup">
+      <button class="seg-btn" data-level="media" role="radio"></button>
+      <button class="seg-btn" data-level="primaria" role="radio"></button>
+    </div>
+
+    <div class="form-row">
+      <label class="field"><span id="lbl-grade"></span><select id="f-grade"></select></label>
+      <label class="field"><span data-i18n="f_section"></span>
+        <input type="text" id="f-section" maxlength="12" autocomplete="off" data-i18n-ph="ph_section">
+        <small data-i18n="h_section"></small></label>
+      <label class="field"><span data-i18n="f_pass"></span>
+        <input type="text" id="f-pass" maxlength="40" autocomplete="off" spellcheck="false" data-i18n-ph="ph_pass">
+        <small data-i18n="h_pass"></small></label>
+    </div>
+
+    <p class="hint" data-i18n="dataHint"></p>
+    <div class="cols" id="cols">
+      <div class="col"><div class="col-head"><span class="col-label" data-i18n="f_user"></span><span class="col-count" id="cnt-user"></span></div>
+        <textarea id="f-user" wrap="off" spellcheck="false" autocomplete="off" data-i18n-ph="ph_user"></textarea></div>
+      <div class="col"><div class="col-head"><span class="col-label" data-i18n="f_last"></span><span class="col-count" id="cnt-last"></span></div>
+        <textarea id="f-last" wrap="off" spellcheck="false" autocomplete="off" data-i18n-ph="ph_last"></textarea></div>
+      <div class="col"><div class="col-head"><span class="col-label" data-i18n="f_first"></span><span class="col-count" id="cnt-first"></span></div>
+        <textarea id="f-first" wrap="off" spellcheck="false" autocomplete="off" data-i18n-ph="ph_first"></textarea></div>
+    </div>
+    <p class="hint tip" data-i18n="pasteTip"></p>
+
+    <div id="form-status"></div>
+    <div class="form-actions">
+      <button class="btn primary" id="btn-save"></button>
+      <button class="btn ghost" id="btn-cancel" hidden data-i18n="cancelEdit"></button>
+    </div>
+  </section>
+
+  <!-- Listas guardadas -->
+  <section class="card" id="results-card">
+    <div class="card-head">
+      <h3 data-i18n="savedTitle"></h3>
+      <div class="card-actions">
+        <span class="total" id="total"></span>
+        <button class="btn primary sm" id="btn-zip" hidden></button>
+        <button class="btn ghost sm danger" id="btn-delall" hidden></button>
+      </div>
+    </div>
+    <div id="results"></div>
+  </section>
+
+  <!-- Opciones de impresión -->
+  <section class="card">
+    <div class="card-head"><h3 data-i18n="optionsTitle"></h3></div>
+    <div class="options">
+      <label class="field">
+        <span data-i18n="optLayout"></span>
+        <select id="opt-layout"></select>
+      </label>
+      <label class="field">
+        <span data-i18n="optUrl"></span>
+        <input type="text" id="opt-url" spellcheck="false" autocomplete="off">
+      </label>
+      <label class="check"><input type="checkbox" id="opt-upper" checked><span data-i18n="optUpper"></span></label>
+    </div>
+  </section>
+</main>
+
+<!-- Vista previa -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <strong id="modal-title"></strong>
+      <button class="btn ghost sm" id="modal-close"></button>
+    </div>
+    <iframe id="modal-frame" title="PDF"></iframe>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="lib/jszip.min.js"></script>
+<script src="js/stickers.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

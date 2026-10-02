@@ -1,0 +1,51 @@
+Generador de carnets · Cleveland English Institute / TecnoCleveland
+====================================================================
+
+CÓMO ABRIRLA
+1. Descomprime la carpeta donde quieras.
+2. Abre "index.html" con doble clic. No necesita instalación ni internet
+   (jsPDF y JSZip vienen en la carpeta "lib"; solo las tipografías se cargan
+   de Google Fonts y, sin internet, se usa una de respaldo).
+
+CÓMO USARLA
+1. Elige la academia:
+   - Cleveland English Institute -> interfaz y carnets en inglés
+     (Username / Password).
+   - TecnoCleveland -> interfaz y carnets en español (Usuario / Clave).
+2. Crea una lista por cada grado y sección:
+   a) Elige el nivel (Educación Media 1.º-5.º año / Primaria 1.º-6.º grado).
+   b) Elige el año/grado.
+   c) Escribe la sección (A, B, C...). Si ese grado NO tiene secciones,
+      déjala vacía: el carnet no mostrará sección.
+   d) Escribe la clave: es una sola para todos los estudiantes de la lista.
+   e) Pega las 3 columnas: Usuario, Apellidos y Nombres (un estudiante por
+      línea; la línea 1 de cada caja es el mismo estudiante).
+      Puedes copiar las 3 columnas juntas desde Excel/Sheets y pegarlas en la
+      primera caja: se reparten solas.
+   f) Pulsa "Guardar lista". Repite con la sección B, C, etc.
+3. En "Listas guardadas" el programa agrupa las listas por grado, en el orden
+   en que las guardaste (primero A, luego B...). Para cada grado puedes:
+   - "Descargar PDF del grado": un PDF con todas sus secciones en ese orden.
+   - Por cada lista/sección: Vista previa, PDF individual, Editar y Eliminar.
+   - Con varios grados: "Descargar todos los grados (.zip)".
+   - "Eliminar todas las listas" para empezar de cero.
+4. El nombre del carnet se arma como NOMBRES + APELLIDOS:
+   JOSE ALEJANDRO + MONTILLA VALERO -> "JOSE ALEJANDRO MONTILLA VALERO".
+
+OPCIONES DE IMPRESIÓN
+- Carnets por página: 14 grandes (2x7) o 24 compactos (3x8), tamaño carta.
+- Sitio web impreso en el carnet (por defecto cursoscleveland.com).
+- Nombres en mayúsculas.
+
+IMPRESIÓN
+Imprime en tamaño carta al 100 % ("Tamaño real", sin "ajustar a la página").
+
+DÓNDE SE GUARDAN LAS LISTAS
+Las listas se guardan en el navegador (localStorage) de ESTE computador, por
+academia, y siguen ahí al cerrar y volver a abrir la app. No se envían a
+ningún servidor. Si borras los datos del navegador o cambias de equipo, se
+pierden: descarga los PDF cuando termines.
+
+COLORES (definidos al inicio de js/stickers.js)
+- Cleveland: azul #25A5DE y verde #7EBD3E.
+- TecnoCleveland: naranja #EA5A1E, azul #3A6BB5, verde #84BC24, morado #976FB0.
