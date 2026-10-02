@@ -1,0 +1,197 @@
+/* ════════════════════════════════════════════════════════════
+   carnets.css · Estilos del módulo "Generador de carnets"
+   Todo con prefijo .cn- y bajo #view-carnets para no pisar el
+   resto del organizador. Reutiliza las variables de styles.css.
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Selector de modo ── */
+#view-carnets .cn-modeseg {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+#view-carnets .cn-modeseg-btn {
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#view-carnets .cn-modeseg-btn:hover { background: var(--surface2); color: var(--text); }
+#view-carnets .cn-modeseg-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── Casilla "Nombres en mayúsculas" ── */
+#view-carnets .cn-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  cursor: pointer;
+}
+#view-carnets .cn-check input { width: auto; margin: 0; }
+#view-carnets .cn-check span { font-size: 13px; font-weight: 600; color: var(--text); }
+
+/* ── Encabezado de tarjeta con acciones ── */
+#view-carnets .cn-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+#view-carnets .cn-card-head .card-title { margin-bottom: 0; }
+#view-carnets .cn-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#view-carnets .cn-total { font-size: 12px; color: var(--text-muted); font-weight: 700; }
+
+/* Botones pequeños reutilizando .btn del organizador */
+#view-carnets .btn.sm { padding: 6px 12px; font-size: 12px; }
+#view-carnets .btn.cn-danger { color: var(--trash-color); }
+#view-carnets .btn.cn-danger:hover { background: var(--trash-light); }
+
+/* ── Selector de nivel (Educación Media / Primaria) ── */
+#view-carnets .cn-seg {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+#view-carnets .cn-seg-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+#view-carnets .cn-seg-btn.active { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+
+/* ── Textos de ayuda ── */
+#view-carnets .cn-hint { font-size: 11.5px; color: var(--text-muted); font-weight: 500; margin-top: 4px; }
+#view-carnets .cn-tip { margin-top: 10px; }
+
+/* ── 3 columnas pegables ── */
+#view-carnets .cn-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+#view-carnets .cn-col {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  overflow: hidden;
+}
+#view-carnets .cn-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+#view-carnets .cn-col-count { font-weight: 700; }
+#view-carnets .cn-col-count.ok { color: var(--green); }
+#view-carnets .cn-col-count.bad { color: var(--trash-color); }
+#view-carnets .cn-col textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+#view-carnets .cn-col textarea.bad { background: var(--trash-light); }
+
+/* ── Alertas de validación ── */
+#view-carnets .cn-alert {
+  background: var(--trash-light);
+  color: var(--trash-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+#view-carnets .cn-alert ul { margin: 6px 0 0 18px; font-weight: 600; }
+
+/* ── Listas de resultados agrupadas por grado ── */
+#view-carnets .cn-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+#view-carnets .cn-group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface2);
+  flex-wrap: wrap;
+}
+#view-carnets .cn-grade-bar { width: 4px; height: 30px; border-radius: 3px; background: var(--accent); flex-shrink: 0; }
+#view-carnets .cn-grade-name { font-family: var(--font-display); font-weight: 700; font-size: 14.5px; }
+#view-carnets .cn-grade-meta { font-size: 11.5px; color: var(--text-muted); font-weight: 600; margin-top: 2px; }
+#view-carnets .cn-group-head > div:nth-child(2) { flex: 1; }
+#view-carnets .cn-grade-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+#view-carnets .cn-sub-list { padding: 4px 16px 10px; }
+#view-carnets .cn-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+#view-carnets .cn-sub-name { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+#view-carnets .cn-order-n {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface2); color: var(--text-muted);
+  font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+#view-carnets .cn-pill {
+  background: var(--accent-light); color: var(--accent);
+  font-size: 11px; font-weight: 800;
+  padding: 3px 9px; border-radius: 20px;
+}
+#view-carnets .cn-pill.cn-pill-none { background: var(--surface2); color: var(--text-muted); }
+#view-carnets .cn-sub-curso { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
+#view-carnets .cn-sub-count { font-size: 11.5px; color: var(--text-muted); font-weight: 700; }
+
+/* ── Vista previa (modal con iframe) ── */
+.cn-preview-box { max-width: 640px; width: 100%; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; }
+.cn-preview-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--border);
+  font-family: var(--font-display); font-size: 15px;
+}
+.cn-preview-frame { width: 100%; height: 72vh; border: none; background: #fff; }
+
+/* ── Responsive ── */
+@media (max-width: 780px) {
+  #view-carnets .cn-cols { grid-template-columns: 1fr; }
+  #view-carnets .cn-group-head { flex-direction: column; align-items: flex-start; }
+  #view-carnets .cn-grade-actions { width: 100%; }
+}

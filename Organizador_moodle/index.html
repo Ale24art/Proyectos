@@ -24,7 +24,9 @@
 </style>
 <script>
   (function () {
-    if (!sessionStorage.getItem('tcUser')) {
+    if (!sessionStorage.getItem('tcUser') || !sessionStorage.getItem('tcAcademia')) {
+      sessionStorage.removeItem('tcUser');
+      sessionStorage.removeItem('tcAcademia');
       window.location.replace('login.html');
     } else {
       document.documentElement.classList.add('auth-ok');
@@ -33,20 +35,21 @@
     }
   }());
 </script>
-<title>TecnoCleveland · Organizador Moodle</title>
+<title>Organizador Moodle</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="carnets.css?v=1">
 </head>
 <body>
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="logo">
-    <span class="logo-mark">🤖</span>
-    <span class="logo-text">Tecno<span class="logo-accent">Cleveland</span></span>
+    <span class="logo-mark" id="sidebar-logo-mark">🤖</span>
+    <span class="logo-text" id="sidebar-logo-text">Tecno<span class="logo-accent">Cleveland</span></span>
   </div>
-  <div class="logo-subtitle">Organizador Moodle</div>
+  <div class="logo-subtitle" id="sidebar-logo-subtitle">Organizador Moodle</div>
 
   <div class="nav-section-label">Programas</div>
 
@@ -61,6 +64,10 @@
   <button class="nav-item" onclick="showView('generador')" data-view="generador">
     <span class="nav-icon">🆔</span>
     Generador de usuarios
+  </button>
+  <button class="nav-item" onclick="showView('carnets')" data-view="carnets">
+    <span class="nav-icon">🪪</span>
+    Generador de carnets
   </button>
   <button class="nav-item" onclick="showView('cursos')" data-view="cursos">
     <span class="nav-icon">⚙️</span>
@@ -98,7 +105,7 @@
 
   <div class="sidebar-footer">
     <div id="sidebar-user" style="margin-bottom:4px;font-weight:700">—</div>
-    <div style="font-size:10px;opacity:0.6">TecnoCleveland · Academia de Robótica</div>
+    <div style="font-size:10px;opacity:0.6" id="sidebar-footer-academia">TecnoCleveland · Academia de Robótica</div>
   </div>
 </aside>
 <div id="sidebar-overlay"></div>
@@ -124,9 +131,9 @@
     <div class="welcome-strip">
       <div>
         <div class="welcome-quote">Control de copias de cursos modelo por colegio, año y clases disponibles</div>
-        <div style="font-size:12px;color:var(--accent2);margin-top:6px;font-weight:700;letter-spacing:0.02em">TecnoCleveland · Academia de Robótica</div>
+        <div style="font-size:12px;color:var(--accent2);margin-top:6px;font-weight:700;letter-spacing:0.02em" id="welcome-academia">TecnoCleveland · Academia de Robótica</div>
       </div>
-      <div class="welcome-icons">🤖⚙️🔧</div>
+      <div class="welcome-icons" id="welcome-icons">🤖⚙️🔧</div>
     </div>
 
     <div class="stats-row">
@@ -134,7 +141,7 @@
         <div class="stat-icon">🏫</div>
         <div class="stat-label">Colegios activos</div>
         <div class="stat-value" id="stat-colegios">0</div>
-        <div class="stat-sub">de 28 registrados</div>
+        <div class="stat-sub" id="stat-colegios-sub">de 28 registrados</div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📋</div>
@@ -347,7 +354,7 @@
 
       <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
         <button class="btn btn-primary" onclick="generarListaUsuarios()">Generar lista</button>
-        <button class="btn btn-ghost" onclick="onImportCSVClick()">⬆ Importar CSV</button>
+        <button class="btn btn-ghost" id="gen-import-btn" onclick="onImportCSVClick()">⬆ Importar CSV</button>
         <input type="file" id="gen-import-file" accept=".csv,text/csv" style="display:none" onchange="importarCSVArchivo(event)">
       </div>
     </div>
@@ -396,6 +403,108 @@
         </table>
       </div>
       <div class="empty-state" id="gen-years-primaria-empty" style="display:none">Sin listas de este nivel.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════ GENERADOR DE CARNETS ═══════════ -->
+  <div class="view" id="view-carnets">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Generador de carnets</div>
+        <div class="page-subtitle">Crea carnets de acceso a Moodle, listos para imprimir</div>
+      </div>
+    </div>
+
+    <!-- Opciones de impresión -->
+    <div class="card">
+      <div class="card-title">Opciones de impresión</div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">
+        <div class="form-field">
+          <label>Carnets por página</label>
+          <select id="cn-opt-layout">
+            <option value="big">14 · grandes (2 × 7)</option>
+            <option value="compact">24 · compactos (3 × 8)</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Sitio web impreso</label>
+          <input type="text" id="cn-opt-url" spellcheck="false" autocomplete="off">
+        </div>
+        <label class="form-field cn-check">
+          <input type="checkbox" id="cn-opt-upper">
+          <span>Nombres en mayúsculas</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- MODO 1: crear desde cero -->
+    <div class="cn-mode-panel" id="cn-panel-manual">
+      <div class="card" id="cn-form-card">
+        <div class="cn-card-head">
+          <div class="card-title" id="cn-form-title">Nueva lista</div>
+          <div class="cn-card-actions">
+            <button class="btn btn-ghost sm" id="cn-btn-example" type="button">Cargar ejemplo</button>
+            <button class="btn btn-ghost sm" id="cn-btn-clear" type="button">Limpiar formulario</button>
+          </div>
+        </div>
+
+        <div class="cn-seg" id="cn-level-seg" role="radiogroup">
+          <button class="cn-seg-btn active" type="button" data-level="media">Educación Media · 1.º a 5.º año</button>
+          <button class="cn-seg-btn" type="button" data-level="primaria">Educación Primaria · 1.º a 6.º grado</button>
+        </div>
+
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin:14px 0">
+          <div class="form-field">
+            <label id="cn-lbl-grade">Año</label>
+            <select id="cn-f-grade"></select>
+          </div>
+          <div class="form-field">
+            <label>Sección (opcional)</label>
+            <input type="text" id="cn-f-section" maxlength="12" autocomplete="off" placeholder="A">
+            <small class="cn-hint">Déjala vacía si este grado no tiene secciones.</small>
+          </div>
+          <div class="form-field">
+            <label>Clave</label>
+            <input type="text" id="cn-f-pass" maxlength="40" autocomplete="off" spellcheck="false" placeholder="1234">
+            <small class="cn-hint">La misma clave para todos los estudiantes de esta lista.</small>
+          </div>
+        </div>
+
+        <p class="cn-hint" style="margin-bottom:8px">Pega una columna por caja, un estudiante por línea. La línea 1 de todas las cajas es el mismo estudiante.</p>
+        <div class="cn-cols" id="cn-cols">
+          <div class="cn-col">
+            <div class="cn-col-head"><span>Usuario</span><span class="cn-col-count" id="cn-cnt-user">0 líneas</span></div>
+            <textarea id="cn-f-user" wrap="off" spellcheck="false" autocomplete="off" placeholder="sje227"></textarea>
+          </div>
+          <div class="cn-col">
+            <div class="cn-col-head"><span>Apellidos</span><span class="cn-col-count" id="cn-cnt-last">0 líneas</span></div>
+            <textarea id="cn-f-last" wrap="off" spellcheck="false" autocomplete="off" placeholder="MONTILLA VALERO"></textarea>
+          </div>
+          <div class="cn-col">
+            <div class="cn-col-head"><span>Nombres</span><span class="cn-col-count" id="cn-cnt-first">0 líneas</span></div>
+            <textarea id="cn-f-first" wrap="off" spellcheck="false" autocomplete="off" placeholder="JOSE ALEJANDRO"></textarea>
+          </div>
+        </div>
+        <p class="cn-hint cn-tip">Consejo: copia las columnas desde Excel o Sheets y pégalas en la primera caja; se reparten en las cajas de su derecha.</p>
+
+        <div id="cn-form-status"></div>
+        <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
+          <button class="btn btn-primary" id="cn-btn-save" type="button">Guardar lista</button>
+          <button class="btn btn-ghost" id="cn-btn-cancel" type="button" style="display:none">Cancelar edición</button>
+        </div>
+      </div>
+
+      <div class="card" id="cn-results-card">
+        <div class="cn-card-head">
+          <div class="card-title">Listas guardadas</div>
+          <div class="cn-card-actions">
+            <span class="cn-total" id="cn-total"></span>
+            <button class="btn btn-primary sm" id="cn-btn-zip" type="button" style="display:none">Descargar todos los grados (.zip)</button>
+            <button class="btn btn-ghost sm cn-danger" id="cn-btn-delall" type="button" style="display:none">Eliminar todas las listas</button>
+          </div>
+        </div>
+        <div id="cn-results"></div>
+      </div>
     </div>
   </div>
 
@@ -502,7 +611,7 @@
 
     <div class="card">
       <div class="card-title">⚠ Restablecer datos de ejemplo</div>
-      <p class="card-text">Si algo se dañó, puedes recargar la lista base de 28 colegios y 17 cursos modelo. Esto <b>no borra</b> los cursos copiados que ya registraste.</p>
+      <p class="card-text" id="reset-catalog-text">Si algo se dañó, puedes recargar la lista base de 28 colegios y 17 cursos modelo. Esto <b>no borra</b> los cursos copiados que ya registraste.</p>
       <button class="btn btn-red" onclick="resetCatalogs()">Restablecer colegios y cursos modelo</button>
     </div>
   </div>
@@ -649,9 +758,25 @@
   </div>
 </div>
 
+<!-- MODAL: Vista previa de carnets -->
+<div class="modal-overlay" id="cn-preview-modal">
+  <div class="modal cn-preview-box">
+    <div class="cn-preview-head">
+      <strong id="cn-preview-title">Vista previa</strong>
+      <button class="btn btn-ghost" onclick="Carnets.closePreview()">Cerrar</button>
+    </div>
+    <iframe id="cn-preview-frame" title="Vista previa PDF" class="cn-preview-frame"></iframe>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
+<script src="academias.js?v=1"></script>
 <script src="lib/xlsx.full.min.js"></script>
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="lib/jszip.min.js"></script>
 <script src="script.js"></script>
+<script src="carnets-pdf.js?v=1"></script>
+<script src="carnets.js?v=1"></script>
 </body>
 </html>
