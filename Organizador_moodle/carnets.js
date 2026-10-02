@@ -34,7 +34,15 @@
       saved: 'Lista guardada', updated: 'Lista actualizada', deleted: 'Lista eliminada',
       doneOne: 'PDF descargado', doneZip: 'ZIP descargado',
       fail: 'Ocurrió un problema al crear el PDF.', working: 'Creando…',
-      sectionWord: 'Sección', sectionFile: 'Seccion'
+      sectionWord: 'Sección', sectionFile: 'Seccion',
+      pEmpty: 'Este colegio todavía no tiene participantes generados.',
+      pGoGen: 'Ir al Generador de usuarios',
+      pSelAll: 'Seleccionar todo', pSelNone: 'Seleccionar ninguno',
+      pColAnio: 'Año / Grado', pColCurso: 'Curso modelo', pColGrupo: 'Grupo', pColCant: 'Estudiantes', pColSeccion: 'Sección a imprimir',
+      pGenerated: 'Carnets generados',
+      pWarnTitle: 'Algunas listas no se pudieron generar:',
+      pWarnAnio: (curso, anio, grupo) => `No se pudo interpretar el año de: ${curso} (${anio}${grupo ? ', grupo ' + grupo : ''})`,
+      pNoSelection: 'Marca al menos una lista para generar carnets.'
     },
     en: {
       gradeMedia: 'Year', gradePrim: 'Grade', pick: 'Choose…',
@@ -60,7 +68,15 @@
       saved: 'List saved', updated: 'List updated', deleted: 'List deleted',
       doneOne: 'PDF downloaded', doneZip: 'ZIP downloaded',
       fail: 'Something went wrong while creating the PDF.', working: 'Creating…',
-      sectionWord: 'Section', sectionFile: 'Section'
+      sectionWord: 'Section', sectionFile: 'Section',
+      pEmpty: 'This school has no generated participants yet.',
+      pGoGen: 'Go to User generator',
+      pSelAll: 'Select all', pSelNone: 'Select none',
+      pColAnio: 'Year / Grade', pColCurso: 'Model course', pColGrupo: 'Group', pColCant: 'Students', pColSeccion: 'Section to print',
+      pGenerated: 'Generated ID cards',
+      pWarnTitle: 'Some lists could not be generated:',
+      pWarnAnio: (curso, anio, grupo) => `Could not interpret the year of: ${curso} (${anio}${grupo ? ', group ' + grupo : ''})`,
+      pNoSelection: 'Check at least one list to generate ID cards.'
     }
   };
   function L() { return T[ACADEMIA_ACTUAL.idiomaUI] || T.es; }
@@ -70,8 +86,11 @@
   /* ── Estado del módulo ── */
   let manualLevel = 'media';
   let editingListId = null;
+  let pColegioId = null;
+  let pGroups = [];          // última tabla calculada para el modo 2
+  let pResultLists = [];     // resultados efímeros del modo 2
 
-  /* ═════════ Utilidades de generación de PDF ═════════ */
+  /* ═════════ Utilidades compartidas (modo 1 y modo 2) ═════════ */
   function perPage() {
     const key = (data.carnetOpciones && data.carnetOpciones.layout) || 'big';
     const ly = (window.CarnetsPDF.layouts || {})[key] || { cols: 2, rows: 7 };
@@ -81,7 +100,7 @@
   function prefixCarnet() { return ACADEMIA_ACTUAL.idiomaCarnet === 'en' ? 'ID-Cards' : 'Carnets'; }
   function levelTag(nivel) { return nivel === 'media' ? 'Media' : 'Primaria'; }
 
-  // Convierte una lista guardada a estudiantes "canónicos" {name,user,pass,section}
+  // Convierte un item de lista (modo 1 o modo 2) a estudiantes "canónicos" {name,user,pass,section}
   function toCanonicalStudents(list) {
     const upper = !!(data.carnetOpciones && data.carnetOpciones.upper);
     return list.estudiantes.map(s => {
@@ -107,7 +126,7 @@
     lists.forEach(l => {
       const k = l.nivel + '|' + l.grado;
       if (!map.has(k)) map.set(k, { nivel: l.nivel, grado: l.grado, lists: [] });
-      map.get(k).lists.push(l); // se conserva el orden de guardado
+      map.get(k).lists.push(l); // se conserva el orden de guardado / de la tabla
     });
     return [...map.values()].sort((a, b) => a.nivel === b.nivel ? a.grado - b.grado : (a.nivel === 'media' ? -1 : 1));
   }
@@ -189,6 +208,8 @@
     }, 30);
   }
 
+  function getListsBySrc(src) { return src === 'manual' ? data.carnetListas : pResultLists; }
+
   function renderResultsInto(containerId, lists, opts) {
     const Lx = L();
     const box = document.getElementById(containerId);
@@ -256,7 +277,7 @@
     box.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-act]');
       if (!b) return;
-      const lists = data.carnetListas;
+      const lists = getListsBySrc(b.dataset.src);
       switch (b.dataset.act) {
         case 'preview-grade': return openPreview(gradeJob(lists, b.dataset.k));
         case 'dl-grade': return downloadJob(gradeJob(lists, b.dataset.k), b);
@@ -268,7 +289,7 @@
     });
   }
 
-  /* ═════════ Opciones de impresión ═════════ */
+  /* ═════════ Opciones de impresión (compartidas) ═════════ */
   function syncOptionsFromData() {
     document.getElementById('cn-opt-layout').value = data.carnetOpciones.layout || 'big';
     document.getElementById('cn-opt-url').value = data.carnetOpciones.url || 'cursoscleveland.com';
@@ -278,6 +299,7 @@
     document.getElementById('cn-opt-layout').addEventListener('change', (e) => {
       data.carnetOpciones.layout = e.target.value; saveData();
       renderManualResults();
+      if (pResultLists.length) renderResultsInto('cn-presults', pResultLists, { editable: false, showCurso: true, totalElId: 'cn-ptotal', zipBtnId: 'cn-pbtn-zip' });
     });
     document.getElementById('cn-opt-url').addEventListener('input', (e) => {
       data.carnetOpciones.url = e.target.value; saveData();
@@ -287,7 +309,7 @@
     });
   }
 
-  /* ═════════ Crear desde cero ═════════ */
+  /* ═════════ Modo 1: crear desde cero ═════════ */
   function buildGradeSelect(selected) {
     const Lx = L();
     const max = (window.CarnetsPDF.levels[manualLevel] || {}).max || 5;
@@ -449,10 +471,157 @@
     });
   }
 
+  /* ═════════ Modo 2: desde participantes de un colegio ═════════ */
+  function fillPColegioSelect() {
+    const sel = document.getElementById('cn-pcolegio');
+    const sorted = [...data.colegios].sort((a, b) => a.nombre.localeCompare(b.nombre));
+    const prev = pColegioId;
+    sel.innerHTML = sorted.map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('');
+    if (prev && sorted.some(c => c.id === prev)) sel.value = prev;
+    pColegioId = sel.value || null;
+  }
+
+  function computeParticipantGroups(colegioId) {
+    const cursoMap = {}; data.cursos.forEach(c => { cursoMap[c.id] = c; });
+    const rows = data.participantes.filter(p => p.colegioId === colegioId);
+    const map = new Map();
+    rows.forEach(p => {
+      const key = p.cursoId + '|' + p.anio + '|' + (p.group1 || '');
+      if (!map.has(key)) {
+        const curso = cursoMap[p.cursoId];
+        map.set(key, {
+          key, cursoId: p.cursoId, anio: p.anio, grupo: p.group1 || '',
+          cursoNombre: curso ? curso.nombre : '—',
+          nivel: curso ? curso.nivel : null,
+          participantes: []
+        });
+      }
+      map.get(key).participantes.push(p);
+    });
+    const groups = [...map.values()].map(g => ({
+      ...g,
+      cantidad: g.participantes.length,
+      seccionDefault: (g.grupo && g.grupo.length <= 3) ? g.grupo.toLocaleUpperCase() : ''
+    }));
+    const byAnio = (a, b) => extractAnioNum(a.anio) - extractAnioNum(b.anio) || (a.grupo || '').localeCompare(b.grupo || '');
+    const media = groups.filter(g => g.nivel === 'media').sort(byAnio);
+    const primaria = groups.filter(g => g.nivel === 'primaria').sort(byAnio);
+    return { media, primaria, all: [...media, ...primaria] };
+  }
+
+  function renderParticipantesTables(groupsMedia, groupsPrimaria) {
+    const Lx = L();
+    const sectionHTML = (title, groups) => {
+      if (!groups.length) return '';
+      return `<div class="card" style="margin-top:12px">
+        <div class="card-title">${esc(title)}</div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th></th><th>${esc(Lx.pColAnio)}</th><th>${esc(Lx.pColCurso)}</th><th>${esc(Lx.pColGrupo)}</th><th>${esc(Lx.pColCant)}</th><th>${esc(Lx.pColSeccion)}</th>
+            </tr></thead>
+            <tbody>
+              ${groups.map(g => `<tr>
+                <td><input type="checkbox" class="cn-row-check" checked data-key="${esc(g.key)}"></td>
+                <td><b>${esc(g.anio)}</b></td>
+                <td>${esc(g.cursoNombre)}</td>
+                <td>${esc(g.grupo || '—')}</td>
+                <td>${g.cantidad}</td>
+                <td><input type="text" class="table-input cn-row-section" maxlength="12" data-key="${esc(g.key)}" value="${esc(g.seccionDefault)}"></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    };
+    return sectionHTML(Lx.levelName.media, groupsMedia) + sectionHTML(Lx.levelName.primaria, groupsPrimaria);
+  }
+
+  function renderPTables() {
+    const wrap = document.getElementById('cn-ptables-wrap');
+    const emptyBox = document.getElementById('cn-pempty');
+    if (!pColegioId) {
+      wrap.style.display = 'none';
+      emptyBox.style.display = 'none';
+      pGroups = [];
+      return;
+    }
+    const g = computeParticipantGroups(pColegioId);
+    pGroups = g.all;
+    if (!pGroups.length) {
+      wrap.style.display = 'none';
+      emptyBox.style.display = '';
+      document.getElementById('cn-presults-card').style.display = 'none';
+      return;
+    }
+    emptyBox.style.display = 'none';
+    wrap.style.display = '';
+    document.getElementById('cn-ptables').innerHTML = renderParticipantesTables(g.media, g.primaria);
+  }
+
+  function renderPWarnings(warnings) {
+    const box = document.getElementById('cn-pwarnings');
+    if (!warnings.length) { box.innerHTML = ''; return; }
+    const Lx = L();
+    box.innerHTML = `<div class="cn-alert">${esc(Lx.pWarnTitle)}<ul>${warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>`;
+  }
+
+  function onGenerateParticipantes() {
+    const Lx = L();
+    const checks = Array.from(document.querySelectorAll('#cn-ptables .cn-row-check'));
+    const selectedKeys = checks.filter(cb => cb.checked).map(cb => cb.dataset.key);
+    if (!selectedKeys.length) { showToast(Lx.pNoSelection); return; }
+
+    const warnings = [];
+    const resultLists = [];
+
+    selectedKeys.forEach(key => {
+      const g = pGroups.find(x => x.key === key);
+      if (!g) return;
+      const max = (window.CarnetsPDF.levels[g.nivel] || {}).max || 0;
+      const n = extractAnioNum(g.anio);
+      if (!n || n > max) {
+        warnings.push(Lx.pWarnAnio(g.cursoNombre, g.anio, g.grupo));
+        return;
+      }
+      const inputEl = document.querySelector(`.cn-row-section[data-key="${CSS.escape(key)}"]`);
+      const seccion = (inputEl ? inputEl.value : '').trim().toLocaleUpperCase();
+      resultLists.push({
+        id: 'r-' + key,
+        nivel: g.nivel, grado: n, seccion,
+        cursoNombre: g.cursoNombre,
+        estudiantes: g.participantes.map(p => ({
+          usuario: p.username, clave: p.password, nombres: p.nombres, apellidos: p.apellidos
+        }))
+      });
+    });
+
+    pResultLists = resultLists;
+    renderPWarnings(warnings);
+    renderResultsInto('cn-presults', resultLists, {
+      editable: false, showCurso: true,
+      totalElId: 'cn-ptotal', zipBtnId: 'cn-pbtn-zip'
+    });
+    const card = document.getElementById('cn-presults-card');
+    card.style.display = resultLists.length ? '' : 'none';
+    if (resultLists.length) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /* ═════════ Modo (selector segmentado) ═════════ */
+  function setMode(mode) {
+    document.querySelectorAll('#cn-mode-seg .cn-modeseg-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    document.getElementById('cn-panel-manual').style.display = mode === 'manual' ? '' : 'none';
+    document.getElementById('cn-panel-participantes').style.display = mode === 'participantes' ? '' : 'none';
+  }
+
   /* ═════════ Ciclo de vida ═════════ */
   function init() {
     bindOptions();
     syncOptionsFromData();
+
+    document.querySelectorAll('#cn-mode-seg .cn-modeseg-btn').forEach(b => {
+      b.addEventListener('click', () => setMode(b.dataset.mode));
+    });
 
     document.querySelectorAll('#cn-level-seg .cn-seg-btn').forEach(b => {
       b.addEventListener('click', () => setManualLevel(b.dataset.level, true));
@@ -479,9 +648,29 @@
     document.getElementById('cn-btn-zip').addEventListener('click', e => downloadZip(data.carnetListas, e.currentTarget));
 
     bindResultsClicks('cn-results');
+    bindResultsClicks('cn-presults');
 
     resetManualForm();
     renderManualResults();
+
+    fillPColegioSelect();
+    document.getElementById('cn-pcolegio').addEventListener('change', () => {
+      pColegioId = document.getElementById('cn-pcolegio').value || null;
+      pResultLists = [];
+      document.getElementById('cn-presults-card').style.display = 'none';
+      document.getElementById('cn-pwarnings').innerHTML = '';
+      renderPTables();
+    });
+    document.getElementById('cn-pempty-btn').addEventListener('click', () => showView('generador'));
+    document.getElementById('cn-btn-selall').addEventListener('click', () => {
+      document.querySelectorAll('#cn-ptables .cn-row-check').forEach(cb => { cb.checked = true; });
+    });
+    document.getElementById('cn-btn-selnone').addEventListener('click', () => {
+      document.querySelectorAll('#cn-ptables .cn-row-check').forEach(cb => { cb.checked = false; });
+    });
+    document.getElementById('cn-btn-generate').addEventListener('click', onGenerateParticipantes);
+    document.getElementById('cn-pbtn-zip').addEventListener('click', e => downloadZip(pResultLists, e.currentTarget));
+    renderPTables();
 
     document.getElementById('cn-preview-modal').addEventListener('click', e => { if (e.target.id === 'cn-preview-modal') closePreview(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
@@ -490,6 +679,13 @@
   function render() {
     syncOptionsFromData();
     renderManualResults();
+    const prevColegio = pColegioId;
+    fillPColegioSelect();
+    if (!pColegioId || pColegioId !== prevColegio) {
+      pResultLists = [];
+      document.getElementById('cn-presults-card').style.display = 'none';
+      renderPTables();
+    }
   }
 
   window.Carnets = { init, render, closePreview };

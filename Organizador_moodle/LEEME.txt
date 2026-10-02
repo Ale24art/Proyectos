@@ -1,11 +1,13 @@
-TecnoCleveland · Organizador Moodle
-════════════════════════════════════
+TecnoCleveland · Cleveland English Institute · Organizador Moodle
+══════════════════════════════════════════════════════════════
 
 QUÉ ES
 ------
 App web (HTML + CSS + JavaScript, sin instalación) para llevar el control de qué
 cursos modelo has copiado a cada colegio, en qué año/grado, y cuántas clases
-tiene subidas cada copia en Moodle.
+tiene subidas cada copia en Moodle. Una sola app sirve a dos academias
+(TecnoCleveland y Cleveland English Institute), cada una con sus datos
+completamente separados.
 
 CÓMO ABRIRLA
 -------------
@@ -14,29 +16,38 @@ CÓMO ABRIRLA
    - También puedes subir toda la carpeta a un hosting (o a un Moodle, GitHub
      Pages, Netlify, etc.) y abrir login.html desde ahí.
 
-CÓDIGOS DE ACCESO
-------------------
-Por ahora el acceso es con un código numérico (no usuario/clave de texto).
-Los códigos están al final del archivo "login.html", en esta sección:
+CÓMO ENTRA CADA ACADEMIA
+--------------------------
+El código de acceso determina a qué academia entras. Los códigos están al
+final del archivo "login.html", en esta sección:
 
     const USERS = {
-      '2026': 'Administrador',
-      '1010': 'Asistente'
+      '2026':  { nombre: 'Administrador',  academia: 'tecno' },
+      '1010':  { nombre: 'Asistente',      academia: 'tecno' },
+      'ruben': { nombre: 'Ruben Mogollon',  academia: 'cleveland' }
     };
 
 Cámbialos por los códigos que quieras usar, y agrega más líneas si necesitas
-que otra persona (por ejemplo, otro coordinador) entre también:
+que otra persona entre también (el campo "academia" debe ser 'tecno' o
+'cleveland'):
 
     const USERS = {
-      '4821': 'José',
-      '7734': 'María'
+      '4821': { nombre: 'José', academia: 'tecno' },
+      '7734': { nombre: 'María', academia: 'cleveland' }
     };
+
+Los códigos no distinguen mayúsculas/minúsculas ni espacios sobrantes. Cada
+academia ve únicamente sus propios colegios, cursos modelo, participantes y
+carnets; no hay forma de cambiar de academia dentro de la misma sesión (hay
+que cerrar sesión y volver a entrar con el código de la otra academia).
 
 DÓNDE SE GUARDAN LOS DATOS
 ----------------------------
 Todavía no está conectado a una base de datos en la nube (Firebase u otra).
 Por ahora todo se guarda en el "localStorage" del navegador donde lo uses,
-es decir: los datos quedan guardados en ESE navegador y ESA computadora.
+es decir: los datos quedan guardados en ESE navegador y ESA computadora. Cada
+academia usa su propia clave de almacenamiento, así que los datos de
+TecnoCleveland y los de Cleveland English Institute nunca se mezclan.
 
 Esto significa:
   • Si abres el organizador desde otro computador o navegador, verás los
@@ -78,6 +89,18 @@ QUÉ PUEDES HACER EN LA APP
 
 • Papelera: todo lo que borres (colegios, cursos modelo o registros de
   cursos copiados) queda aquí por si necesitas restaurarlo.
+
+• Generador de carnets: crea los carnets de acceso a Moodle para imprimir
+  (tamaño carta, 14 o 24 por página). Tiene dos modos:
+    - "Crear desde cero": pega listas de usuario/apellidos/nombres, elige
+      año/grado, sección opcional y clave, igual que el generador
+      independiente de carnets.
+    - "Desde participantes de un colegio": genera los carnets a partir de
+      los participantes que ya existen en Colegios → Participantes (no hay
+      que volver a escribir nada). Cada participante usa su propia clave.
+  Los carnets de TecnoCleveland salen en español (Usuario/Clave) y los de
+  Cleveland English Institute en inglés (Username/Password), con los
+  colores de cada academia.
 
 REGISTRAR UNA COPIA DE CURSO (el flujo típico)
 -------------------------------------------------

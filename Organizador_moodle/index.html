@@ -415,7 +415,12 @@
       </div>
     </div>
 
-    <!-- Opciones de impresión -->
+    <div class="cn-modeseg" id="cn-mode-seg" role="radiogroup">
+      <button class="cn-modeseg-btn active" type="button" data-mode="manual">Crear desde cero</button>
+      <button class="cn-modeseg-btn" type="button" data-mode="participantes">Desde participantes de un colegio</button>
+    </div>
+
+    <!-- Opciones de impresión (compartidas por ambos modos) -->
     <div class="card">
       <div class="card-title">Opciones de impresión</div>
       <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">
@@ -504,6 +509,49 @@
           </div>
         </div>
         <div id="cn-results"></div>
+      </div>
+    </div>
+
+    <!-- MODO 2: desde participantes de un colegio -->
+    <div class="cn-mode-panel" id="cn-panel-participantes" style="display:none">
+      <div class="card">
+        <div class="form-field" style="max-width:420px">
+          <label>Colegio</label>
+          <select id="cn-pcolegio"></select>
+        </div>
+      </div>
+
+      <div class="empty-state" id="cn-pempty" style="display:none">
+        Este colegio todavía no tiene participantes generados.
+        <div style="margin-top:12px">
+          <button class="btn btn-primary" id="cn-pempty-btn" type="button">Ir al Generador de usuarios</button>
+        </div>
+      </div>
+
+      <div id="cn-ptables-wrap" style="display:none">
+        <div class="cn-card-head" style="margin-bottom:10px">
+          <div class="card-title" style="margin:0">Listas de participantes de este colegio</div>
+          <div class="cn-card-actions">
+            <button class="btn btn-ghost sm" id="cn-btn-selall" type="button">Seleccionar todo</button>
+            <button class="btn btn-ghost sm" id="cn-btn-selnone" type="button">Seleccionar ninguno</button>
+          </div>
+        </div>
+        <div id="cn-ptables"></div>
+        <div id="cn-pwarnings"></div>
+        <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
+          <button class="btn btn-primary" id="cn-btn-generate" type="button">Generar carnets</button>
+        </div>
+      </div>
+
+      <div class="card" id="cn-presults-card" style="display:none">
+        <div class="cn-card-head">
+          <div class="card-title">Carnets generados</div>
+          <div class="cn-card-actions">
+            <span class="cn-total" id="cn-ptotal"></span>
+            <button class="btn btn-primary sm" id="cn-pbtn-zip" type="button" style="display:none">Descargar todos los grados (.zip)</button>
+          </div>
+        </div>
+        <div id="cn-presults"></div>
       </div>
     </div>
   </div>
