@@ -4,7 +4,7 @@
    la app para exportar/importar un archivo .json de seguridad.
    ════════════════════════════════════════════════════════════ */
 
-const STORAGE_KEY = 'tc_organizador_data';
+const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;
 
 const DEFAULT_COLEGIOS = [
   "Alejandro Humboldt","Angel de la Guarda","Fray Miguel de Olivares","Arturo Michelena",
@@ -113,12 +113,17 @@ function parseCSV(text) {
 }
 
 /* ── PERSISTENCIA ── */
+const CARNET_OPCIONES_DEFAULT = { layout: 'big', url: 'cursoscleveland.com', upper: true };
+
 function freshData() {
+  const esTecno = ACADEMIA_ACTUAL.id === 'tecno';
   return {
-    colegios: DEFAULT_COLEGIOS.map(nombre => ({ id: uid(), nombre })),
-    cursos: DEFAULT_CURSOS.map(c => ({ id: uid(), nombre: c.nombre, nivel: c.nivel })),
+    colegios: esTecno ? DEFAULT_COLEGIOS.map(nombre => ({ id: uid(), nombre })) : [],
+    cursos: esTecno ? DEFAULT_CURSOS.map(c => ({ id: uid(), nombre: c.nombre, nivel: c.nivel })) : [],
     asignaciones: [],
     participantes: [],
+    carnetListas: [],
+    carnetOpciones: { ...CARNET_OPCIONES_DEFAULT },
     trash: { colegios: [], cursos: [], asignaciones: [], participantes: [] }
   };
 }
@@ -134,6 +139,8 @@ function loadData() {
       cursos: parsed.cursos || [],
       asignaciones: parsed.asignaciones || [],
       participantes: parsed.participantes || [],
+      carnetListas: parsed.carnetListas || [],
+      carnetOpciones: { ...CARNET_OPCIONES_DEFAULT, ...(parsed.carnetOpciones || {}) },
       trash: {
         colegios: trash.colegios || [],
         cursos: trash.cursos || [],
@@ -158,8 +165,41 @@ function saveData() {
 }
 
 /* ── ARRANQUE ── */
+function applyAcademiaBranding() {
+  document.body.setAttribute('data-academia', ACADEMIA_ACTUAL.id);
+  document.title = `${ACADEMIA_ACTUAL.nombre} · Organizador Moodle`;
+
+  const esTecno = ACADEMIA_ACTUAL.id === 'tecno';
+  const logoMark = document.getElementById('sidebar-logo-mark');
+  const logoText = document.getElementById('sidebar-logo-text');
+  const logoSub = document.getElementById('sidebar-logo-subtitle');
+  const footerAcademia = document.getElementById('sidebar-footer-academia');
+  const welcomeAcademia = document.getElementById('welcome-academia');
+  const welcomeIcons = document.getElementById('welcome-icons');
+  const statColegiosSub = document.getElementById('stat-colegios-sub');
+  const importBtn = document.getElementById('gen-import-btn');
+  const resetCatalogText = document.getElementById('reset-catalog-text');
+
+  if (logoMark) logoMark.textContent = esTecno ? '🤖' : '🪪';
+  if (logoText) logoText.innerHTML = esTecno
+    ? 'Tecno<span class="logo-accent">Cleveland</span>'
+    : 'Cleveland<span class="logo-accent"> English</span>';
+  if (logoSub) logoSub.textContent = ACADEMIA_ACTUAL.subtitulo;
+  if (footerAcademia) footerAcademia.textContent = `${ACADEMIA_ACTUAL.nombre} · ${ACADEMIA_ACTUAL.subtitulo}`;
+  if (welcomeAcademia) welcomeAcademia.textContent = `${ACADEMIA_ACTUAL.nombre} · ${ACADEMIA_ACTUAL.subtitulo}`;
+  if (welcomeIcons) welcomeIcons.textContent = esTecno ? '🤖⚙️🔧' : '🪪📘🌎';
+  if (statColegiosSub) statColegiosSub.textContent = esTecno ? 'de 28 registrados' : 'registrados';
+  if (importBtn) importBtn.style.display = ACADEMIA_ACTUAL.importarCSV ? '' : 'none';
+  if (resetCatalogText) {
+    resetCatalogText.innerHTML = esTecno
+      ? 'Si algo se dañó, puedes recargar la lista base de 28 colegios y 17 cursos modelo. Esto <b>no borra</b> los cursos copiados que ya registraste.'
+      : 'Si algo se dañó, puedes vaciar el catálogo de colegios y cursos modelo para empezar de nuevo. Esto <b>no borra</b> los cursos copiados, participantes ni carnets que ya registraste.';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadData();
+  applyAcademiaBranding();
 
   const savedUser = sessionStorage.getItem('tcUser') || 'Administrador';
   document.getElementById('sidebar-user').textContent = savedUser;
@@ -173,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   renderAll();
+  if (window.Carnets && typeof window.Carnets.init === 'function') window.Carnets.init();
 
   setTimeout(() => {
     const loader = document.getElementById('app-loader');
@@ -213,6 +254,7 @@ function showView(id) {
 
   if (id === 'colegios') { closeCollegeDetail(); renderColegios(); }
   if (id === 'generador') renderGenerador();
+  if (id === 'carnets' && window.Carnets && typeof window.Carnets.render === 'function') window.Carnets.render();
   if (id === 'cursos') renderCursos();
   if (id === 'trash') renderTrash();
   if (id === 'dashboard') renderDashboard();
@@ -224,6 +266,7 @@ function showView(id) {
 
 function logout() {
   sessionStorage.removeItem('tcUser');
+  sessionStorage.removeItem('tcAcademia');
   window.location.replace('login.html');
 }
 
@@ -841,7 +884,7 @@ function generarListaUsuarios() {
       username, password,
       firstname: `${username} ${nombres}`,
       lastname: apLines[i],
-      email: `${username}@tecno.com`,
+      email: `${username}@${ACADEMIA_ACTUAL.emailDominio}`,
       city, country: 'Venezuela',
       course1: nombreCorto,
       group1, role1: 'student', enrolperiod1: '365d', suspended: '0'
@@ -909,7 +952,7 @@ function importarCSVArchivo(event) {
           username, password,
           firstname: nombres ? `${username} ${nombres}` : username,
           lastname: lastRaw,
-          email: `${username}@tecno.com`,
+          email: `${username}@${ACADEMIA_ACTUAL.emailDominio}`,
           city, country: 'Venezuela',
           course1: genAsig.nombreCorto,
           group1: groupRaw, role1: 'student', enrolperiod1: '365d', suspended: '0'
@@ -961,7 +1004,7 @@ function onGenUsernameEdit(i, value) {
   const newUsername = value.trim();
   row.username = newUsername;
   row.firstname = namePart ? `${newUsername} ${namePart}` : newUsername;
-  row.email = `${newUsername}@tecno.com`;
+  row.email = `${newUsername}@${ACADEMIA_ACTUAL.emailDominio}`;
   const fnInput = document.getElementById(`gp-firstname-${i}`);
   const emInput = document.getElementById(`gp-email-${i}`);
   if (fnInput) fnInput.value = row.firstname;
@@ -1379,7 +1422,7 @@ function exportReportCSV() {
   if (rows.length === 1) { showToast('No hay datos todavía para exportar'); return; }
 
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-  downloadFile(csv, `reporte_tecnocleveland_${todayStr()}.csv`, 'text/csv;charset=utf-8;');
+  downloadFile(csv, `reporte_${ACADEMIA_ACTUAL.id}_${todayStr()}.csv`, 'text/csv;charset=utf-8;');
   showToast('Reporte CSV descargado ✓');
 }
 
@@ -1396,7 +1439,8 @@ function downloadFile(content, filename, mime) {
 }
 
 function exportBackup() {
-  downloadFile(JSON.stringify(data, null, 2), `respaldo_tecnocleveland_${todayStr()}.json`, 'application/json');
+  const payload = { ...data, _academia: ACADEMIA_ACTUAL.id };
+  downloadFile(JSON.stringify(payload, null, 2), `respaldo_${ACADEMIA_ACTUAL.id}_${todayStr()}.json`, 'application/json');
   showToast('Respaldo descargado ✓');
 }
 
@@ -1410,6 +1454,9 @@ function importBackup(event) {
       if (!parsed || !Array.isArray(parsed.colegios) || !Array.isArray(parsed.cursos)) {
         throw new Error('Formato no válido');
       }
+      if (parsed._academia && parsed._academia !== ACADEMIA_ACTUAL.id) {
+        if (!confirm('Este respaldo es de otra academia. ¿Importar de todos modos?')) { event.target.value = ''; return; }
+      }
       if (!confirm('Esto reemplazará todos los datos actuales en este navegador con los del archivo. ¿Continuar?')) return;
       const trash = parsed.trash || {};
       data = {
@@ -1417,6 +1464,8 @@ function importBackup(event) {
         cursos: parsed.cursos || [],
         asignaciones: parsed.asignaciones || [],
         participantes: parsed.participantes || [],
+        carnetListas: parsed.carnetListas || [],
+        carnetOpciones: { ...CARNET_OPCIONES_DEFAULT, ...(parsed.carnetOpciones || {}) },
         trash: {
           colegios: trash.colegios || [],
           cursos: trash.cursos || [],
@@ -1426,6 +1475,7 @@ function importBackup(event) {
       };
       saveData();
       renderAll();
+      if (window.Carnets && typeof window.Carnets.render === 'function') window.Carnets.render();
       closeCollegeDetail();
       showToast('Respaldo importado ✓');
     } catch (e) {

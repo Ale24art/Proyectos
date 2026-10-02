@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TecnoCleveland · Organizador Moodle</title>
+<title>Organizador Moodle</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -119,13 +119,13 @@
   <div class="login-card">
     <div class="login-hero">
       <div class="login-mark">🤖</div>
-      <div class="login-brand">Tecno<span>Cleveland</span></div>
+      <div class="login-brand">Organizador <span>Moodle</span></div>
       <div class="login-subtitle">ORGANIZADOR MOODLE</div>
     </div>
 
     <div class="login-field-label">Código de acceso</div>
     <div class="login-input-wrap">
-      <input type="password" id="code-input" placeholder="••••••••" autocomplete="off" inputmode="numeric" />
+      <input type="password" id="code-input" placeholder="••••••••" autocomplete="off" />
       <button class="eye-btn" onclick="toggleEye()" id="eye-btn" title="Mostrar/ocultar">👁</button>
     </div>
 
@@ -133,7 +133,7 @@
 
     <button class="login-btn" onclick="doLogin()">Ingresar →</button>
 
-    <div class="login-footer">TecnoCleveland · Academia de Robótica</div>
+    <div class="login-footer">TecnoCleveland · Cleveland English Institute</div>
   </div>
 
   <script>
@@ -142,18 +142,21 @@
 
     // ───────────────────────────────────────────────────────────
     // CÓDIGOS DE ACCESO: agrega, quita o cambia aquí las personas
-    // que pueden entrar al organizador. Formato: 'codigo': 'Nombre'
+    // que pueden entrar al organizador.
+    // Formato: 'codigo': { nombre: 'Nombre', academia: 'tecno'|'cleveland' }
     // ───────────────────────────────────────────────────────────
     const USERS = {
-      '2026': 'Administrador',
-      '1010': 'Asistente'
+      '2026':  { nombre: 'Administrador',  academia: 'tecno' },
+      '1010':  { nombre: 'Asistente',      academia: 'tecno' },
+      'ruben': { nombre: 'Ruben Mogollon',  academia: 'cleveland' }
     };
 
     function doLogin() {
-      const code = document.getElementById('code-input').value.trim();
-      const user = USERS[code];
+      const code = document.getElementById('code-input').value.trim().toLowerCase();
+      const user = Object.keys(USERS).reduce((found, key) => found || (key.toLowerCase() === code ? USERS[key] : null), null);
       if (user) {
-        sessionStorage.setItem('tcUser', user);
+        sessionStorage.setItem('tcUser', user.nombre);
+        sessionStorage.setItem('tcAcademia', user.academia);
         window.location.replace('index.html');
       } else {
         showError('Código incorrecto. Intenta de nuevo.');

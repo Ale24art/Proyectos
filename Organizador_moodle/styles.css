@@ -41,6 +41,20 @@ body.dark {
   --shadow-md: 0 10px 34px rgba(0,0,0,0.55);
 }
 
+/* ── Identidad visual por academia ── */
+body[data-academia="cleveland"] {
+  --accent: #1280B3;
+  --accent-light: #E3F3FA;
+  --accent2: #7EBD3E;
+  --accent2-light: #EDF6E3;
+}
+body.dark[data-academia="cleveland"] {
+  --accent: #25A5DE;
+  --accent-light: #15283A;
+  --accent2: #7EBD3E;
+  --accent2-light: #1C2A14;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
