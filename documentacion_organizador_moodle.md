@@ -1,8 +1,8 @@
-# Organizador Moodle — Documentación definitiva (v3, verificada contra el código)
+# Organizador Moodle — Documentación definitiva (v4, verificada contra el código)
 
-**Fecha de verificación:** 2026-10-03
-**Commit verificado:** `1ff425c` (`git rev-parse --short HEAD`)
-**Verificado por:** lectura directa de todos los archivos de `Organizador_moodle/`, `stickers/`, `firebase.json`, `.firebaserc`, `README.md` y el historial de `git log`. No existía ningún borrador previo de este documento en el repo (ver nota en §11.0); todo lo escrito aquí viene del código, no de una versión anterior.
+**Fecha de verificación:** 2026-10-04
+**Commit base:** `be0f135` (`git rev-parse --short HEAD`) — esta versión documenta ese commit **más** los cambios de la sesión de 2026-10-04 (Generador de usuarios, Colegios, Buscar, Papelera) que estaban aplicados en el árbol de trabajo pero todavía sin `git commit` al cerrar la tarea (ver INSTRUCCION.md: no se hace `git commit` salvo pedido explícito).
+**Verificado por:** lectura directa de todos los archivos de `Organizador_moodle/` tras aplicar los cambios de esta sesión (`index.html`, `script.js`, `styles.css`, `carnets.js`). La v3 (2026-10-03, commit `1ff425c`) sigue siendo válida como base para todo lo que esta versión no modifica; aquí solo se actualiza lo que cambió.
 
 > **Principio rector de este documento: el código manda.** Si algo que se usaba antes (un `LEEME.txt`, una instrucción `INSTRUCCION_*.md`) no coincide con lo implementado, aquí se describe lo implementado y se señala la diferencia.
 
@@ -49,11 +49,11 @@ Carpeta publicada en producción: `Organizador_moodle/`. Todo lo que está fuera
 **Orden de carga en `index.html`** (obligatorio, no se puede reordenar):
 ```
 academias.js?v=1  →  lib/xlsx.full.min.js  →  lib/jspdf.umd.min.js  →  lib/jszip.min.js
-  →  script.js  →  carnets-pdf.js?v=1  →  carnets.js?v=1
+  →  script.js?v=2  →  carnets-pdf.js?v=1  →  carnets.js?v=2
 ```
-`script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes. `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`) y el objeto `window.CarnetsPDF`, por eso va al final.
+`script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes. `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting inconsistente (hallazgo, no corregido):** solo `academias.js`, `carnets.css`, `carnets-pdf.js` y `carnets.js` llevan `?v=1`. `script.js`, `styles.css`, `login.html` y los archivos de `lib/` no tienen parámetro de versión. `firebase.json` no define `headers` de caché, así que esto depende del comportamiento por defecto de Firebase Hosting; un cambio futuro en `script.js` o `styles.css` podría no invalidarse igual de rápido que uno en los archivos versionados.
+**Cache-busting (actualizado 2026-10-04):** `script.js` y `carnets.js` subieron a `?v=2` (se modificaron esta sesión); `styles.css` pasó de sin versión a `?v=2` (también se modificó). `academias.js`, `carnets.css`, `carnets-pdf.js` siguen en `?v=1` (sin cambios). `login.html` y los archivos de `lib/` siguen sin parámetro de versión — sigue siendo una inconsistencia conocida (no es obligatorio versionar todo, solo lo que cambia en cada despliegue), documentada aquí para la próxima vez que se toquen esos archivos. `firebase.json` no define `headers` de caché, así que esto depende del comportamiento por defecto de Firebase Hosting.
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propia sesión (`sessionStorage.orgUser`, no `tcUser`/`tcAcademia`), su propio `login.html`/`script.js`/`styles.css`, y un `firebase-config.js` (sugiere que ese proyecto sí usa o usó Firebase real, a diferencia de este). No comparte nada de código con `Organizador_moodle/`. Se confirma lo que decía la instrucción histórica: no tiene relación con esta app.
 
@@ -210,14 +210,28 @@ Objeto global `data` (vive solo en memoria + se serializa a `localStorage[STORAG
         "anio": "1er Año", "grupo": "", "fechaEliminacion": "2026-10-01",
         "estudiantes": [ /* array de participantes de esa lista, objetos completos */ ]
       }
+    ],
+    "estudiantes": [
+      {
+        "id": "idxxxxxxxx", "fechaEliminacion": "2026-10-04",
+        "participante": { /* objeto participante completo, tal cual estaba */ }
+      }
+    ],
+    "carnetListas": [
+      { "id": "idwx12yz34", "nivel": "media", "grado": 4, "seccion": "A", "clave": "1234",
+        "estudiantes": [ /* ... */ ], "fechaEliminacion": "2026-10-04" }
     ]
   }
 }
 ```
 
-**Notas de fidelidad al código (importante, difiere de lo que podría suponerse):**
-- **No existe `trash.carnetListas`.** Las listas del Generador de carnets Modo 1 (`deleteManualList`, "Eliminar todas las listas") se eliminan **de forma permanente e inmediata**, sin pasar por Papelera. Esto es distinto de colegios/cursos/asignaciones/participantes, que sí van a `data.trash.*`. Ver §11.2.
-- `trash.participantes` no son participantes individuales sueltos: son **lotes/listas completas** eliminadas con `eliminarGenLista()` (un registro por año+grupo, con su propio `id`, `fechaEliminacion` y el array `estudiantes` dentro). Restaurar (`restoreGenLista`) hace `data.participantes.push(...item.estudiantes)`.
+**Novedades de esta sesión (2026-10-04) — esquema ampliado:**
+- `trash.estudiantes[]`: estudiantes individuales eliminados desde la vista editable (Ver/Editar) del Generador de usuarios (§6.3). Cada entrada envuelve el objeto `participante` completo tal cual estaba, más `id` y `fechaEliminacion` propios de la entrada de papelera.
+- `trash.carnetListas[]`: listas del Generador de carnets Modo 1 eliminadas (`deleteManualList`, "Eliminar todas las listas" — una entrada por lista) o pisadas por guardar otra lista con el mismo `nivel+grado+sección`. Es el mismo objeto de lista (`id`, `nivel`, `grado`, `seccion`, `clave`, `estudiantes`) con `fechaEliminacion` agregado. **Esto resuelve lo que la v3 documentaba en §11.2** (ver §11.2 más abajo, ahora marcado como resuelto).
+- `trash.participantes[]` (listas de participantes del Generador de usuarios) ahora también recibe una entrada cuando `guardarListaUsuarios()` **sobrescribe** una lista existente del mismo `colegioId+cursoId+anio+group1` (antes, la versión pisada se descartaba sin pasar por Papelera).
+
+**Notas de fidelidad al código que siguen vigentes de la v3:**
+- `trash.participantes` no son participantes individuales sueltos: son **lotes/listas completas** eliminadas con `eliminarGenLista()` o pisadas al guardar (un registro por año+grupo, con su propio `id`, `fechaEliminacion` y el array `estudiantes` dentro). Restaurar (`restoreGenLista`) hace `data.participantes.push(...item.estudiantes)`.
 - `asignaciones.clases` y `carnetListas.grado` se guardan como **número** (`Number(...)`), no como string.
 - `carnetListas[].estudiantes[].usuario/apellidos/nombres` — sin `clave` individual; la clave es una sola por lista (`carnetListas[].clave`), compartida por todos los estudiantes de esa lista. Esto contrasta con el Modo 2 (participantes), donde cada estudiante **sí** tiene su propia clave (`participantes[].password`), y por eso `toCanonicalStudents()` en `carnets.js` resuelve la clave así: `s.clave !== undefined ? s.clave : list.clave` (los "resultados efímeros" del modo 2 sí llevan `clave` por estudiante; las listas guardadas del modo 1 no).
 
@@ -237,13 +251,14 @@ function loadData() {
       carnetOpciones: { ...CARNET_OPCIONES_DEFAULT, ...(parsed.carnetOpciones || {}) },
       trash: {
         colegios: trash.colegios || [], cursos: trash.cursos || [],
-        asignaciones: trash.asignaciones || [], participantes: trash.participantes || []
+        asignaciones: trash.asignaciones || [], participantes: trash.participantes || [],
+        estudiantes: trash.estudiantes || [], carnetListas: trash.carnetListas || []
       }
     };
   } catch (e) { console.error(...); data = freshData(); saveData(); }
 }
 ```
-El patrón de compatibilidad es: **cada clave nueva se lee con `|| valorPorDefecto` (arrays) o `{...DEFAULT, ...parsed}` (objetos)**. Un `localStorage` o respaldo de antes de que existiera `carnetListas`/`carnetOpciones`/`participantes` carga sin romperse, exactamente como exige la instrucción histórica. `importBackup()` repite el mismo patrón línea por línea (no está factorizado en una función compartida — si se agrega una clave nueva al esquema, hay que tocar **ambas** funciones, más `freshData()`, más el ejemplo de este documento).
+El patrón de compatibilidad es: **cada clave nueva se lee con `|| valorPorDefecto` (arrays) o `{...DEFAULT, ...parsed}` (objetos)**. Un `localStorage` o respaldo de antes de que existiera `carnetListas`/`carnetOpciones`/`participantes`/`trash.estudiantes`/`trash.carnetListas` carga sin romperse, exactamente como exige la instrucción histórica. `importBackup()` repite el mismo patrón línea por línea (no está factorizado en una función compartida — si se agrega una clave nueva al esquema, hay que tocar **ambas** funciones, más `freshData()`, más el ejemplo de este documento). Esta sesión no tuvo Node.js disponible en el entorno para correr un script de verificación (ver reporte de cierre); se verificó por lectura directa de `loadData()`/`importBackup()` que `trash.estudiantes || []` y `trash.carnetListas || []` cubren el caso de un JSON antiguo sin esas claves.
 
 ### 4.3 Flujo de datos
 1. **Carga:** `DOMContentLoaded` → `loadData()` → `applyAcademiaBranding()` → `renderAll()` → `Carnets.init()` (si existe `window.Carnets`).
@@ -274,13 +289,13 @@ if (id === 'dashboard') renderDashboard();
 
 ### 5.2 Qué hace cada vista (verificado contra el código)
 - **Panel (`dashboard`):** saludo con el nombre de sesión, fecha de hoy, botón "+ Registrar copia de curso" (abre el modal de asignación). 4 tarjetas de estadística (colegios activos, cursos copiados, clases subidas, promedio clases/curso). Barra comparativa Media vs Primaria. Lista de los 6 últimos cursos copiados (ordenados por `fecha` descendente).
-- **Colegios (`colegios`):** grilla de tarjetas filtrable por nombre + tarjeta "+ Nuevo colegio". Click en una tarjeta abre el **detalle** del colegio: insignias de nivel, dos tablas (Media/Primaria) de cursos copiados con editar/eliminar, botón "+ Agregar año/curso", botón "✎ Editar colegio", y la tarjeta de **Participantes** (selector año→grupo, buscador, tabla con copiar al portapapeles y botón "⬇ Descargar XLSX").
-- **Generador de usuarios (`generador`):** elegir Colegio → Año/Grado (solo años con asignación existente) → pegar Apellidos/Nombres (una columna cada uno) → Contraseña/Ciudad/Grupo opcional → "Generar lista" (vista previa editable, celda por celda) → "Guardar lista" o "⬇ Descargar CSV". Debajo, resumen de "Años ya generados" separado en Media/Primaria con Ver/Editar, descargar CSV y eliminar por año+grupo. El botón "⬆ Importar CSV" solo aparece si `ACADEMIA_ACTUAL.importarCSV` es `true` (hoy solo Tecno).
+- **Colegios (`colegios`):** grilla de tarjetas filtrable por nombre + tarjeta "+ Nuevo colegio". Click en una tarjeta abre el **detalle** del colegio: insignias de nivel, dos tablas (Media/Primaria) de cursos copiados con editar/eliminar —cada una dentro de un **acordeón** (`col-cursos-media`/`col-cursos-primaria`, ver §6.4) con el conteo en la cabecera—, botón "+ Agregar año/curso", botón "✎ Editar colegio", y la tarjeta de **Participantes**: selector Año/Grado **agrupado Media/Primaria** (misma estructura que `fillGenAnioSelect()`, solo con años que tienen participantes) → grupo → buscador (usuario/nombres/apellidos/correo, sin distinguir mayúsculas ni acentos) → título con el nivel ("Educación Media · 4to Año · Grupo A") → tabla **paginada de 20 en 20** estilo Moodle (`PARTICIPANTES_POR_PAGINA`, ver §6.4) → copiar al portapapeles (por fila) y botón "⬇ Descargar XLSX" (ambos sobre la selección completa de año/grupo, sin paginar ni filtrar por búsqueda — comportamiento preexistente, no cambiado).
+- **Generador de usuarios (`generador`):** elegir Colegio → Año/Grado (solo años con asignación existente) → pegar Apellidos/Nombres (una columna cada uno) → Contraseña/Ciudad/Grupo opcional → "Generar lista" (vista previa editable, celda por celda, con un **acordeón** `gen-editor` que retrae solo la tabla) → "Guardar lista" o "⬇ Descargar CSV". Cada fila de la vista previa tiene un botón 🗑 para eliminar ese estudiante individualmente (ver §6.3). Debajo, resumen de "Años ya generados" separado en dos **acordeones** (`gen-media`/`gen-primaria`, con el conteo de listas en la cabecera) con Ver/Editar, descargar CSV y eliminar por año+grupo. El botón "⬆ Importar CSV" solo aparece si `ACADEMIA_ACTUAL.importarCSV` es `true` (hoy solo Tecno).
 - **Generador de carnets (`carnets`):** ver §7 completa.
 - **Cursos modelo (`cursos`):** pestañas Media/Primaria, tabla con nombre, colegios que lo usan, promedio de clases subidas, editar/eliminar. Botón "+ Nuevo curso modelo".
-- **Buscar (`buscar`):** input con sugerencias en vivo (normaliza acentos con `normalize()`), resumen del colegio elegido (insignias de nivel, años trabajados, clases subidas) y tabla detalle. Botón "⬇ Exportar reporte completo (CSV)" exporta **todas** las asignaciones de todos los colegios (no solo el buscado).
-- **Respaldo (`respaldo`):** exportar/importar JSON, y "Restablecer colegios y cursos modelo" (ver §3.4).
-- **Papelera (`trash`):** 4 secciones (colegios, cursos copiados, listas de participantes, cursos modelo eliminados), cada una con Restaurar / Eliminar para siempre. Botón global "Vaciar papelera".
+- **Buscar (`buscar`):** input con sugerencias en vivo (normaliza acentos con `normalize()`), resumen del colegio elegido (insignias de nivel, años trabajados, clases subidas) y tabla detalle. Botón "⬇ Exportar reporte completo (CSV)" exporta **todas** las asignaciones de todos los colegios (no solo el buscado). **Bug corregido en 2026-10-04** (ver reporte de cierre de esa sesión): las sugerencias nunca aparecían porque `onSearchInput()` mostraba el desplegable con `box.style.display = ''`, lo que solo limpia el estilo inline — como `styles.css` define `.search-suggestions { display: none; }` a nivel de clase, el elemento volvía a caer en ese `display:none` de la hoja de estilos. Ahora se usa `box.style.display = 'block'`. De paso se agregó: Enter toma la primera sugerencia, una coincidencia exacta con un único colegio carga el resumen directo sin desplegable, y un `renderBuscar()` nuevo (enganchado a `showView('buscar')` y a `renderAll()`) deja el mensaje correcto ("Aún no hay colegios registrados" vs. el texto de "empieza a escribir") según si la academia tiene colegios o no.
+- **Respaldo (`respaldo`):** exportar/importar JSON, y "Restablecer colegios y cursos modelo" (ver §3.4). Desde 2026-10-04, los colegios/cursos reemplazados por el restablecimiento van a la Papelera en vez de perderse (ver §6.4).
+- **Papelera (`trash`):** 6 secciones (colegios, cursos copiados, listas de participantes, **estudiantes eliminados**, **listas de carnets eliminadas**, cursos modelo eliminados), cada una con Restaurar / Eliminar para siempre. Botón global "Vaciar papelera" y el badge del sidebar cubren las 6 secciones.
 
 ---
 
@@ -304,7 +319,18 @@ En `generarListaUsuarios()` (`script.js`):
 - El grupo (`group1`) sale de la columna `Groups` del CSV tal cual, sin procesar.
 
 ### 6.3 Guardado de listas (`guardarListaUsuarios`)
-Si ya existe una lista para el mismo `colegioId + cursoId + anio + group1`, pide confirmación y la **reemplaza** (`data.participantes` se filtra para quitar ese grupo antes de volver a insertar). Las listas nuevas quedan con `fecha: todayStr()`.
+Si ya existe una lista para el mismo `colegioId + cursoId + anio + group1`, pide confirmación y la **reemplaza** (`data.participantes` se filtra para quitar ese grupo antes de volver a insertar). Las listas nuevas quedan con `fecha: todayStr()`. **Desde 2026-10-04**, la versión que se reemplaza ya no se descarta: se empaqueta como una entrada de `trash.participantes` (mismo formato que `eliminarGenLista()`) antes de filtrarla, así que una sobrescritura accidental también se puede restaurar desde la Papelera.
+
+### 6.4 Eliminar un estudiante individual y "Reestructurar" (nuevo, 2026-10-04)
+En la vista editable (Ver/Editar) de una lista, cada fila tiene un botón 🗑 que abre el modal `#modal-eliminar-estudiante` con dos opciones:
+- **Conservar:** quita solo esa fila; los demás usernames no cambian (queda un hueco en la numeración).
+- **Reestructurar:** además de quitar la fila, renumera consecutivamente a los participantes **posteriores** de la misma lista y mismo prefijo, empezando por el número del eliminado. Implementado como función pura `calcularReestructura(lista, eliminadoUsername, digits, usernamesOcupados)` (`script.js`): ordena por número, reasigna en orden ascendente evitando colisiones con `usernamesOcupados` (usernames de OTRAS listas/grupos del mismo colegio+prefijo — el llamador excluye explícitamente a toda la lista actual, porque sus propios números están a punto de desplazarse), y conserva los dígitos (3 primaria / 4 media). Se deshabilita (con motivo visible) si el username del eliminado no tiene el formato `letras+números`, o si no hay nadie después de él en la lista.
+- Comportamiento según el origen: si la lista ya estaba guardada (`genPreviewSaved === true`, fijado por `verEditarGenYear()`/`guardarListaUsuarios()`), el estudiante se quita de inmediato de `data.participantes` y va a `trash.estudiantes`, y los usernames reasignados se actualizan tanto ahí como en la copia en pantalla (`genPreviewRows`). Si la lista es recién generada y aún no guardada (`genPreviewSaved === false`), todo ocurre solo en `genPreviewRows` (nunca existió en `data`, por eso no pasa por Papelera). Si se elimina al último estudiante de una lista guardada, la lista desaparece de "Años ya generados" y el editor se cierra con un toast.
+- Verificado por lectura/trace manual del código (sin Node.js disponible en este entorno, ver reporte de cierre) contra el ejemplo de aceptación: lista `ah0001…ah0010`, eliminar `ah0004` con Reestructurar deja `ah0001…ah0009` (antiguos `ah0005→ah0004 … ah0010→ah0009`), igual que pide la instrucción.
+
+### 6.5 Acordeones y paginación reutilizables (nuevo, 2026-10-04)
+- **Acordeón genérico** (`uiAcordeones` en `script.js`, clases `.acc-*` en `styles.css`): estado abierto/cerrado guardado en memoria por clave (`accOpen(key)`, `toggleAcordeon(key)`, `applyAccState(key)`), no en `data` ni `localStorage` — por diseño, ya que las vistas se re-renderizan con `innerHTML`. Por defecto todo empieza abierto. Usado en 5 lugares: "Años ya generados" (`gen-media`/`gen-primaria`, con el conteo de listas en el título), la vista editable (`gen-editor`, retrae solo la tabla y deja visibles el título y los botones de acción) y "Cursos copiados" del detalle de colegio (`col-cursos-media`/`col-cursos-primaria`, con el conteo de cursos en el título).
+- **Paginación genérica** (`paginaInfo(total, page, perPage)`, `paginaBotones(page, totalPages)`, `renderPaginacionHTML(...)` en `script.js`): usada hoy solo en la tabla de Participantes de Colegios (`PARTICIPANTES_POR_PAGINA = 20`, estado `cdPartPage`). `paginaInfo` clampa la página a un rango válido y calcula "Mostrando X–Y de Z"; `paginaBotones` devuelve primera, última y la actual ±2 con "…" en los huecos, igual que pide la instrucción.
 
 ---
 
@@ -326,7 +352,8 @@ Si ya existe una lista para el mismo `colegioId + cursoId + anio + group1`, pide
 - Validaciones antes de guardar (`saveManualList`): grado obligatorio, clave obligatoria, al menos una línea, **las 3 columnas deben tener el mismo número de líneas**, y ninguna línea puede tener un campo vacío (se listan los números de línea afectados).
 - Si ya existe una lista con el mismo `nivel+grado+seccion`, pide confirmar reemplazo.
 - Las listas se agrupan por `nivel+grado` con `groupByGrade()`, **conservando el orden de guardado dentro del grado** (no se reordenan alfabéticamente por sección).
-- Acciones disponibles: vista previa y PDF por grado completo (`gradeJob`) o por lista/sección individual (`listJob`), editar, eliminar (con confirmación, **sin papelera**, ver §11.2), ZIP de todos los grados, "Eliminar todas las listas".
+- Acciones disponibles: vista previa y PDF por grado completo (`gradeJob`) o por lista/sección individual (`listJob`), editar, eliminar (con confirmación), ZIP de todos los grados, "Eliminar todas las listas".
+- **Desde 2026-10-04, sí pasan por Papelera** (`trash.carnetListas`, ver §4.1 y §6.5): `deleteManualList()`, "Eliminar todas las listas" (crea **una entrada por lista**) y el reemplazo por sobrescritura en `saveManualList()` (misma `nivel+grado+sección`) empaquetan la lista con `fechaEliminacion` antes de quitarla de `data.carnetListas`. Esto resuelve lo que la v3 documentaba en §11.2 (ver nota ahí). Restaurar (`restoreCarnetLista()`, en `script.js`) pide confirmación si ya existe una lista con el mismo `nivel+grado+sección` (la actual se manda a Papelera) y genera un `id` nuevo si el original ya está en uso.
 
 ### 7.4 Modo 2 — Desde participantes de un colegio
 - `computeParticipantGroups(colegioId)` agrupa `data.participantes` por clave `cursoId + '|' + anio + '|' + (group1||'')`.
@@ -418,6 +445,8 @@ Si lo que se quiere es que el curso aparezca desde el primer arranque (antes de 
 3. `exportBackup()` no necesita cambios: hace `{ ...data, _academia: ... }`, así que cualquier clave nueva de `data` se incluye automáticamente en el respaldo.
 4. Actualizar el ejemplo de esquema de este documento (§4.1).
 
+Ejemplo real de este patrón aplicado dos veces en la misma sesión (2026-10-04): `trash.estudiantes` y `trash.carnetListas` (ver §4.1, §4.2). Ambas claves se agregaron a `freshData()`, `loadData()` e `importBackup()` con `trash.x || []`, y no fue necesario tocar `exportBackup()`.
+
 ---
 
 ## 10. Glosario
@@ -436,7 +465,7 @@ Si lo que se quiere es que el curso aparezca desde el primer arranque (antes de 
 | **Sección (carnets)** | Lo que se imprime en el carnet como subtítulo del grado (p. ej. "Sección A"). En el Modo 2 se pre-llena desde `group1` solo si mide ≤3 caracteres; si no, queda vacía y es editable. No es necesariamente lo mismo que "grupo". |
 | **Lista de carnets** | Un conjunto de estudiantes con una clave en común, para un nivel+grado+sección. `data.carnetListas[]` (Modo 1) o un resultado efímero `pResultLists` (Modo 2). |
 | **Pool de numeración** | El rango de números de usuario ya usados para un colegio + prefijo (ver §6.1), de donde se calcula el siguiente número al generar una lista nueva. |
-| **Papelera** | `data.trash.{colegios,cursos,asignaciones,participantes}` — todo lo eliminado excepto las listas de carnets del Modo 1, que se borran directo (ver §11.2). |
+| **Papelera** | `data.trash.{colegios,cursos,asignaciones,participantes,estudiantes,carnetListas}` — todo lo eliminado, incluidas las listas de carnets del Modo 1 y los estudiantes individuales desde 2026-10-04 (ver §4.1, §6.4, §6.5, §7.3; §11.2 queda resuelto). La única eliminación permanente e inmediata sigue siendo "Eliminar para siempre" / "Vaciar papelera" / reemplazo total por "Importar respaldo". |
 | **Respaldo** | El archivo `.json` que exporta/importa todo `data` + `_academia`, único mecanismo de portabilidad entre navegadores/equipos. |
 
 ---
@@ -449,8 +478,8 @@ La instrucción de esta tarea asumía que en la raíz del repo ya existía un bo
 ### 11.1 Duplicación `stickers/` ↔ `carnets-pdf.js`
 `carnets-pdf.js` es, función por función, casi una copia literal del motor de PDF de `stickers/js/stickers.js` (`drawSticker`, `clean`, `hex2rgb`, `tint`, `shade`, `PAGE`, `LAYOUTS`, `ORDINALS`, `gradeLabel`), solo renombrado para exponerse como `window.CarnetsPDF` en vez de funciones sueltas, y con los colores/labels de academia repetidos en dos objetos distintos (`CN_ACADEMIAS` en `carnets-pdf.js` vs `ACADEMIES` en `stickers/js/stickers.js`). **Riesgo concreto:** un cambio de diseño, color o medida hecho en uno de los dos archivos no se propaga al otro. `stickers/` sigue existiendo intacto por decisión explícita de una instrucción anterior ("queda como respaldo del generador independiente"), pero su Modo 1 es funcionalmente redundante con el del organizador.
 
-### 11.2 Las listas de carnets (Modo 1) no usan Papelera
-`deleteManualList()` y "Eliminar todas las listas" quitan la(s) lista(s) de `data.carnetListas` de forma permanente, sin pasar por `data.trash`. Es inconsistente con colegios/cursos/asignaciones/participantes, que sí son recuperables. No se corrigió (la instrucción de esta tarea pide solo documentar, no tocar código); se deja planteado para que la persona dueña del repo decida si quiere que también pasen por Papelera.
+### 11.2 Las listas de carnets (Modo 1) no usan Papelera — **RESUELTO el 2026-10-04**
+Hasta el commit `1ff425c`, `deleteManualList()` y "Eliminar todas las listas" quitaban la(s) lista(s) de `data.carnetListas` de forma permanente, sin pasar por `data.trash`. La sesión de 2026-10-04 agregó `trash.carnetListas` (ver §4.1) y conectó las tres rutas de eliminación/sobrescritura (`deleteManualList`, "Eliminar todas las listas", el reemplazo por duplicado en `saveManualList`) a la Papelera, con restauración (`restoreCarnetLista`) incluida. Ver §7.3 y §6.5.
 
 ### 11.3 Código muerto / inconsistencias menores encontradas
 - `NAV_VIEWS` (`script.js`, línea 245) está declarado pero no se referencia en ningún otro punto del código, y además está incompleto (no incluye `'carnets'`). Es un vestigio de una versión anterior a la vista de carnets.
@@ -470,6 +499,7 @@ La instrucción de esta tarea asumía que en la raíz del repo ya existía un bo
 ### 11.5 Lo que no se pudo verificar
 - No se probó la app en un navegador real durante esta revisión (la instrucción permite pruebas de solo lectura pero no fue necesario abrir un navegador para verificar lo pedido: todo lo listado en el checklist se pudo confirmar leyendo el código fuente). No hay, por tanto, confirmación visual del render de los carnets ni de la UI en modo oscuro/móvil más allá de lo que el CSS/JS deja ver por lectura.
 - No se pudo determinar si el campo `notas` de las asignaciones se usa en algún punto fuera de el modal de edición y el CSV de reporte (`exportReportCSV`) — no aparece en ninguna tabla de la UI (ni en el detalle del colegio ni en Buscar). Puede ser intencional (campo "solo para el reporte") o un olvido de UI; no se encontró evidencia concluyente en el código para decidir cuál de las dos.
+- **2026-10-04:** tampoco se pudo abrir un navegador real para probar la Fase B–E de esa sesión (acordeones, eliminar/reestructurar estudiante, paginación de Participantes, corrección de Buscar, Papelera ampliada). Se verificó todo por lectura/trace manual del código. Tampoco había Node.js instalado en el entorno de esa sesión, así que `calcularReestructura()`, `paginaInfo()`/`paginaBotones()` y la migración de esquema antiguo en `loadData()`/`importBackup()` se verificaron trazando el código a mano contra los ejemplos de aceptación, no ejecutando un script — ver el reporte de cierre de esa sesión para el detalle de cada traza.
 
 ---
 

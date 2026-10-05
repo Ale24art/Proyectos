@@ -410,7 +410,10 @@
     const dup = data.carnetListas.find(l => l.nivel === manualLevel && l.grado === grado && l.seccion === seccion && l.id !== editingListId);
     if (dup) {
       if (!confirm(Lx.confirmReplace(gl, seccion))) return;
+      // La versión que se pisa va a la Papelera antes de reemplazar (§5.1).
+      data.trash.carnetListas.push({ ...dup, fechaEliminacion: todayStr() });
       data.carnetListas = data.carnetListas.filter(l => l.id !== dup.id);
+      renderTrash(); updateTrashBadge();
     }
     const payload = {
       nivel: manualLevel, grado, seccion, clave,
@@ -457,10 +460,13 @@
     if (!l) return;
     const gl = window.CarnetsPDF.gradeLabel(ACADEMIA_ACTUAL.idiomaUI, l.nivel, l.grado);
     if (!confirm(L().confirmDel(gl, l.seccion))) return;
+    data.trash.carnetListas.push({ ...l, fechaEliminacion: todayStr() });
     data.carnetListas = data.carnetListas.filter(x => x.id !== id);
     if (editingListId === id) resetManualForm();
     saveData();
     renderManualResults();
+    renderTrash();
+    updateTrashBadge();
     showToast(L().deleted);
   }
 
@@ -640,10 +646,14 @@
     document.getElementById('cn-btn-delall').addEventListener('click', () => {
       if (!data.carnetListas.length) return;
       if (!confirm(L().confirmDelAll)) return;
+      const fecha = todayStr();
+      data.carnetListas.forEach(l => data.trash.carnetListas.push({ ...l, fechaEliminacion: fecha }));
       data.carnetListas = [];
       saveData();
       resetManualForm();
       renderManualResults();
+      renderTrash();
+      updateTrashBadge();
     });
     document.getElementById('cn-btn-zip').addEventListener('click', e => downloadZip(data.carnetListas, e.currentTarget));
 

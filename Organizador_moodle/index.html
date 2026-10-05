@@ -38,7 +38,7 @@
 <title>Organizador Moodle</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2">
 <link rel="stylesheet" href="carnets.css?v=1">
 </head>
 <body>
@@ -209,50 +209,60 @@
       <div class="badges-row" id="cd-badges"></div>
 
       <div class="card" style="margin-top:16px">
-        <div class="card-title">🎓 Cursos copiados · Educación Media</div>
-        <div class="table-wrap" id="cd-asig-media-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Año / Grado</th>
-                <th>Curso modelo</th>
-                <th>Nivel</th>
-                <th>Nombre completo</th>
-                <th>Nombre corto</th>
-                <th>Clases</th>
-                <th>Fecha copia</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="cd-asig-media-body"></tbody>
-          </table>
-        </div>
-        <div class="empty-state" id="cd-asig-media-empty" style="display:none">
-          Sin cursos de este nivel.
+        <button type="button" class="acc-header" data-acc="col-cursos-media" aria-expanded="true" onclick="toggleAcordeon('col-cursos-media')">
+          <span class="acc-chevron">▾</span>
+          <span class="acc-title" id="cd-asig-media-title">🎓 Cursos copiados · Educación Media</span>
+        </button>
+        <div class="acc-body" data-acc="col-cursos-media">
+          <div class="table-wrap" id="cd-asig-media-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Año / Grado</th>
+                  <th>Curso modelo</th>
+                  <th>Nivel</th>
+                  <th>Nombre completo</th>
+                  <th>Nombre corto</th>
+                  <th>Clases</th>
+                  <th>Fecha copia</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="cd-asig-media-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="cd-asig-media-empty" style="display:none">
+            Sin cursos de este nivel.
+          </div>
         </div>
       </div>
 
       <div class="card" style="margin-top:16px">
-        <div class="card-title">🧒 Cursos copiados · Educación Primaria</div>
-        <div class="table-wrap" id="cd-asig-primaria-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Año / Grado</th>
-                <th>Curso modelo</th>
-                <th>Nivel</th>
-                <th>Nombre completo</th>
-                <th>Nombre corto</th>
-                <th>Clases</th>
-                <th>Fecha copia</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="cd-asig-primaria-body"></tbody>
-          </table>
-        </div>
-        <div class="empty-state" id="cd-asig-primaria-empty" style="display:none">
-          Sin cursos de este nivel.
+        <button type="button" class="acc-header" data-acc="col-cursos-primaria" aria-expanded="true" onclick="toggleAcordeon('col-cursos-primaria')">
+          <span class="acc-chevron">▾</span>
+          <span class="acc-title" id="cd-asig-primaria-title">🧒 Cursos copiados · Educación Primaria</span>
+        </button>
+        <div class="acc-body" data-acc="col-cursos-primaria">
+          <div class="table-wrap" id="cd-asig-primaria-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Año / Grado</th>
+                  <th>Curso modelo</th>
+                  <th>Nivel</th>
+                  <th>Nombre completo</th>
+                  <th>Nombre corto</th>
+                  <th>Clases</th>
+                  <th>Fecha copia</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="cd-asig-primaria-body"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="cd-asig-primaria-empty" style="display:none">
+            Sin cursos de este nivel.
+          </div>
         </div>
       </div>
 
@@ -265,19 +275,22 @@
           </div>
           <div class="form-field" id="cd-part-grupo-wrap" style="display:none">
             <label>Grupo</label>
-            <select id="cd-part-grupo" onchange="renderCollegeParticipantesTable()"></select>
+            <select id="cd-part-grupo" onchange="onCdPartGrupoChange()"></select>
           </div>
         </div>
         <div class="form-field" id="cd-part-search-wrap" style="max-width:320px;margin-bottom:14px">
           <label>Buscar</label>
-          <input type="text" id="cd-part-search" placeholder="🔍 Usuario, nombres o apellidos..." oninput="renderCollegeParticipantesTable()">
+          <input type="text" id="cd-part-search" placeholder="🔍 Usuario, nombres, apellidos o correo..." oninput="onCdPartSearchInput()">
         </div>
+        <div class="page-subtitle" id="cd-part-title" style="margin-bottom:10px"></div>
         <div class="table-wrap">
           <table class="data-table">
             <thead><tr><th>Usuario</th><th>Clave</th><th>Nombres</th><th>Apellidos</th><th></th></tr></thead>
             <tbody id="cd-part-body"></tbody>
           </table>
         </div>
+        <div class="pg-wrap" id="cd-part-pagination"></div>
+        <div class="pg-count" id="cd-part-count-label"></div>
         <div class="modal-actions" style="justify-content:flex-start;margin-top:12px" id="cd-part-actions">
           <button class="btn btn-ghost" onclick="descargarXLSXParticipantesColegio()">⬇ Descargar XLSX</button>
         </div>
@@ -360,13 +373,16 @@
     </div>
 
     <div class="card" id="gen-preview-card" style="display:none">
-      <div class="card-title">Vista previa (editable)</div>
-      <div class="table-wrap">
+      <button type="button" class="acc-header" data-acc="gen-editor" aria-expanded="true" onclick="toggleAcordeon('gen-editor')">
+        <span class="acc-chevron">▾</span>
+        <span class="acc-title" id="gen-preview-title">Vista previa (editable)</span>
+      </button>
+      <div class="table-wrap acc-body" data-acc="gen-editor">
         <table class="data-table">
           <thead>
             <tr>
               <th>Usuario</th><th>Contraseña</th><th>Nombre completo</th><th>Apellidos</th><th>Email</th>
-              <th>Ciudad</th><th>País</th><th>Curso corto</th><th>Grupo</th><th>Rol</th><th>Periodo</th><th>Suspendido</th>
+              <th>Ciudad</th><th>País</th><th>Curso corto</th><th>Grupo</th><th>Rol</th><th>Periodo</th><th>Suspendido</th><th></th>
             </tr>
           </thead>
           <tbody id="gen-preview-body"></tbody>
@@ -384,25 +400,35 @@
     </div>
 
     <div class="card" id="gen-years-media-card" style="margin-top:16px">
-      <div class="card-title">🎓 Educación Media</div>
-      <div class="table-wrap" id="gen-years-media-wrap">
-        <table class="data-table">
-          <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
-          <tbody id="gen-years-media-body"></tbody>
-        </table>
+      <button type="button" class="acc-header" data-acc="gen-media" aria-expanded="true" onclick="toggleAcordeon('gen-media')">
+        <span class="acc-chevron">▾</span>
+        <span class="acc-title" id="gen-years-media-title">🎓 Educación Media</span>
+      </button>
+      <div class="acc-body" data-acc="gen-media">
+        <div class="table-wrap" id="gen-years-media-wrap">
+          <table class="data-table">
+            <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
+            <tbody id="gen-years-media-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="gen-years-media-empty" style="display:none">Sin listas de este nivel.</div>
       </div>
-      <div class="empty-state" id="gen-years-media-empty" style="display:none">Sin listas de este nivel.</div>
     </div>
 
     <div class="card" id="gen-years-primaria-card" style="margin-top:16px">
-      <div class="card-title">🧒 Educación Primaria</div>
-      <div class="table-wrap" id="gen-years-primaria-wrap">
-        <table class="data-table">
-          <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
-          <tbody id="gen-years-primaria-body"></tbody>
-        </table>
+      <button type="button" class="acc-header" data-acc="gen-primaria" aria-expanded="true" onclick="toggleAcordeon('gen-primaria')">
+        <span class="acc-chevron">▾</span>
+        <span class="acc-title" id="gen-years-primaria-title">🧒 Educación Primaria</span>
+      </button>
+      <div class="acc-body" data-acc="gen-primaria">
+        <div class="table-wrap" id="gen-years-primaria-wrap">
+          <table class="data-table">
+            <thead><tr><th>Año / Grado</th><th>Grupo</th><th>Estudiantes</th><th>Rango de usuarios</th><th></th></tr></thead>
+            <tbody id="gen-years-primaria-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="gen-years-primaria-empty" style="display:none">Sin listas de este nivel.</div>
       </div>
-      <div class="empty-state" id="gen-years-primaria-empty" style="display:none">Sin listas de este nivel.</div>
     </div>
   </div>
 
@@ -599,7 +625,7 @@
     </div>
 
     <div class="search-box-wrap">
-      <input type="text" id="search-input" placeholder="Escribe el nombre de un colegio..." oninput="onSearchInput()" autocomplete="off">
+      <input type="text" id="search-input" placeholder="Escribe el nombre de un colegio..." oninput="onSearchInput()" onkeydown="onSearchKeydown(event)" autocomplete="off">
       <div class="search-suggestions" id="search-suggestions"></div>
     </div>
 
@@ -687,6 +713,16 @@
     <div class="card" id="trash-part-section">
       <div class="card-title">Listas de participantes eliminadas</div>
       <div id="trash-part-list"></div>
+    </div>
+
+    <div class="card" id="trash-estudiantes-section">
+      <div class="card-title">Estudiantes eliminados</div>
+      <div id="trash-estudiantes-list"></div>
+    </div>
+
+    <div class="card" id="trash-carnetlistas-section">
+      <div class="card-title">Listas de carnets eliminadas</div>
+      <div id="trash-carnetlistas-list"></div>
     </div>
 
     <div class="card" id="trash-cursos-section">
@@ -806,6 +842,38 @@
   </div>
 </div>
 
+<!-- MODAL: Eliminar estudiante (Generador de usuarios · Ver/Editar) -->
+<div class="modal-overlay" id="modal-eliminar-estudiante">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">🗑 Eliminar estudiante</div>
+    <p class="card-text" id="del-est-info" style="margin-bottom:12px"></p>
+
+    <div class="form-field" style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--text)">
+        <input type="radio" name="del-est-modo" id="del-est-conservar" value="conservar" checked style="width:auto" onchange="actualizarPreviewReestructura()">
+        Conservar el orden actual (queda un hueco en la numeración)
+      </label>
+    </div>
+    <div class="form-field" style="margin-bottom:6px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--text)">
+        <input type="radio" name="del-est-modo" id="del-est-reestructurar" value="reestructurar" style="width:auto" onchange="actualizarPreviewReestructura()">
+        Reestructurar el orden (renumera a los estudiantes posteriores)
+      </label>
+    </div>
+    <div id="del-est-preview-wrap" style="margin:8px 0 4px;display:none">
+      <div class="card-text" id="del-est-preview" style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px;font-size:12.5px"></div>
+    </div>
+    <div id="del-est-disabled-reason" class="gen-error" style="display:none;margin-top:6px"></div>
+
+    <div class="gen-error" style="margin-top:12px">⚠ Si estos usuarios ya fueron cargados a Moodle, cambiar sus nombres de usuario aquí NO los actualiza en Moodle.</div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-eliminar-estudiante')">Cancelar</button>
+      <button class="btn btn-red" onclick="confirmarEliminarEstudiante()">Eliminar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Vista previa de carnets -->
 <div class="modal-overlay" id="cn-preview-modal">
   <div class="modal cn-preview-box">
@@ -823,8 +891,8 @@
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/jszip.min.js"></script>
-<script src="script.js"></script>
+<script src="script.js?v=2"></script>
 <script src="carnets-pdf.js?v=1"></script>
-<script src="carnets.js?v=1"></script>
+<script src="carnets.js?v=2"></script>
 </body>
 </html>
