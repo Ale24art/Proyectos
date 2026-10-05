@@ -1205,11 +1205,19 @@ function slugify(text) {
   return normalize(text).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
 }
 
+// nombreArchivoDescarga('5to Año', 'A', 'csv') -> '5to año A.csv'
+function nombreArchivoDescarga(anio, grupo, extension) {
+  let nombre = (anio || '').toLocaleLowerCase('es');
+  if (grupo) nombre = `${nombre} ${grupo}`;
+  nombre = nombre.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+  if (!nombre) nombre = extension === 'xlsx' ? 'participantes' : 'usuarios';
+  return `${nombre}.${extension}`;
+}
+
 function descargarCSVPreview() {
   if (!genPreviewRows.length) return;
-  const col = data.colegios.find(c => c.id === genColegioId);
   const csv = buildUsuariosCSV(genPreviewRows);
-  const filename = `usuarios_${slugify(col ? col.nombre : 'colegio')}_${slugify(genAnioSel || '')}.csv`;
+  const filename = nombreArchivoDescarga(genPreviewCtx ? genPreviewCtx.anio : genAnioSel, genPreviewCtx ? genPreviewCtx.group1 : '', 'csv');
   downloadFile(csv, filename, 'text/csv;charset=utf-8;');
   showToast('CSV descargado ✓');
 }
@@ -1327,10 +1335,8 @@ function descargarCSVGenYear(anio, grupo) {
     email: p.email, city: p.city, country: p.country, course1: p.course1,
     group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended
   }));
-  const col = data.colegios.find(c => c.id === genColegioId);
   const csv = buildUsuariosCSV(csvRows);
-  const grupoSuffix = grupo ? `_${slugify(grupo)}` : '';
-  downloadFile(csv, `usuarios_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}${grupoSuffix}.csv`, 'text/csv;charset=utf-8;');
+  downloadFile(csv, nombreArchivoDescarga(anio, grupo, 'csv'), 'text/csv;charset=utf-8;');
   showToast('CSV descargado ✓');
 }
 
@@ -1637,13 +1643,11 @@ function descargarXLSXParticipantesColegio() {
   const { anio, grupo } = cdPartSeleccion();
   const rows = data.participantes.filter(p => p.colegioId === currentCollegeId && p.anio === anio && (grupo === '' || (p.group1||'') === grupo));
   if (!rows.length) return;
-  const col = data.colegios.find(c => c.id === currentCollegeId);
   const aoa = [['usuario','clave','nombres','apellidos'], ...rows.map(p => [p.username, p.password, p.nombres, p.apellidos])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Participantes');
-  const grupoSuffix = grupo ? `_${slugify(grupo)}` : '';
-  XLSX.writeFile(wb, `participantes_${slugify(col ? col.nombre : 'colegio')}_${slugify(anio)}${grupoSuffix}.xlsx`);
+  XLSX.writeFile(wb, nombreArchivoDescarga(anio, grupo, 'xlsx'));
   showToast('XLSX descargado ✓');
 }
 
