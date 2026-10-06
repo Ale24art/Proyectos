@@ -298,6 +298,8 @@ function applyAcademiaBranding() {
   if (welcomeIcons) welcomeIcons.textContent = esTecno ? '🤖⚙️🔧' : '🪪📘🌎';
   if (statColegiosSub) statColegiosSub.textContent = esTecno ? 'de 28 registrados' : 'registrados';
   if (importBtn) importBtn.style.display = ACADEMIA_ACTUAL.importarCSV ? '' : 'none';
+  const toggleBtn = document.getElementById('sidebar-toggle-btn');
+  if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(!document.documentElement.classList.contains('sidebar-collapsed')));
   if (resetCatalogText) {
     resetCatalogText.innerHTML = esTecno
       ? 'Si algo se dañó, puedes recargar la lista base de 28 colegios y 17 cursos modelo. Esto <b>no borra</b> los cursos copiados que ya registraste.'
@@ -383,6 +385,13 @@ function logout() {
 function toggleDark() {
   document.body.classList.toggle('dark');
   localStorage.setItem('tc_dark', document.body.classList.contains('dark') ? '1' : '0');
+}
+
+function toggleSidebar() {
+  const collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('tc_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+  const btn = document.getElementById('sidebar-toggle-btn');
+  if (btn) btn.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
@@ -1047,6 +1056,7 @@ function importarCSVArchivo(event) {
       const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
       const curso = cursoMap[genAsig.cursoId];
       const nivel = curso ? curso.nivel : 'primaria';
+      const conservar = ACADEMIA_ACTUAL.importarCSVConservarDatos === true;
 
       const rows = [];
       for (let i = 1; i < table.length; i++) {
@@ -1059,7 +1069,8 @@ function importarCSVArchivo(event) {
 
         const spaceIdx = firstRaw.indexOf(' ');
         let username = spaceIdx === -1 ? firstRaw : firstRaw.slice(0, spaceIdx);
-        const nombres = spaceIdx === -1 ? '' : firstRaw.slice(spaceIdx + 1).trim();
+        // conservar=true: preservar literal (incluye tabulaciones internas); conservar=false: trim normal
+        const nombres = spaceIdx === -1 ? '' : (conservar ? firstRaw.slice(spaceIdx + 1) : firstRaw.slice(spaceIdx + 1).trim());
 
         if (!/^([a-zA-Z]+)(\d+)$/.test(username)) {
           const atIdx = emailRaw.indexOf('@');
@@ -1072,7 +1083,8 @@ function importarCSVArchivo(event) {
           username, password,
           firstname: nombres ? `${username} ${nombres}` : username,
           lastname: lastRaw,
-          email: `${username}@${ACADEMIA_ACTUAL.emailDominio}`,
+          // conservar=true: email del CSV tal cual (correos externos válidos); conservar=false: recalcular con emailDominio
+          email: conservar ? emailRaw : `${username}@${ACADEMIA_ACTUAL.emailDominio}`,
           city, country: 'Venezuela',
           course1: genAsig.nombreCorto,
           group1: groupRaw, role1: 'student', enrolperiod1: '365d', suspended: '0'
