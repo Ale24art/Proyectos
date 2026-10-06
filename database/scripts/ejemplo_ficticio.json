@@ -1,0 +1,244 @@
+{
+  "colegios": [
+    {
+      "id": "idcadgb90w",
+      "nombre": "Colegio Ejemplo Uno"
+    },
+    {
+      "id": "ide65jdyf7",
+      "nombre": "Colegio Ejemplo Dos"
+    }
+  ],
+  "cursos": [
+    {
+      "id": "iddfliz1hg",
+      "nombre": "Robotica 1 (ejemplo)",
+      "nivel": "media"
+    },
+    {
+      "id": "idkj8tb2em",
+      "nombre": "Electronica 1 (ejemplo)",
+      "nivel": "media"
+    },
+    {
+      "id": "idpp7oi8za",
+      "nombre": "Knex A1 1er grado (ejemplo)",
+      "nivel": "primaria"
+    }
+  ],
+  "asignaciones": [
+    {
+      "id": "idkshe0sh6",
+      "colegioId": "idcadgb90w",
+      "cursoId": "iddfliz1hg",
+      "anio": "1er Año",
+      "fecha": "2026-02-10",
+      "nombreCompleto": "1er Año-CEU",
+      "nombreCorto": "1styear-ceu",
+      "clases": 8,
+      "notas": "Ejemplo"
+    },
+    {
+      "id": "idhwy9m58j",
+      "colegioId": "ide65jdyf7",
+      "cursoId": "idpp7oi8za",
+      "anio": "1er grado",
+      "fecha": "2026-02-11",
+      "nombreCompleto": "1er grado-CED",
+      "nombreCorto": "1stgrade-ced",
+      "clases": 6,
+      "notas": ""
+    }
+  ],
+  "participantes": [
+    {
+      "id": "id00adltrj",
+      "colegioId": "idcadgb90w",
+      "cursoId": "iddfliz1hg",
+      "anio": "1er Año",
+      "nivel": "media",
+      "username": "ceu0001",
+      "password": "1234",
+      "nombres": "JUAN CARLOS",
+      "apellidos": "PEREZ GOMEZ",
+      "email": "ceu0001@ejemplo.com",
+      "city": "Ciudad Ejemplo",
+      "country": "Venezuela",
+      "course1": "1styear-ceu",
+      "group1": "",
+      "role1": "student",
+      "enrolperiod1": "365d",
+      "suspended": "0",
+      "fecha": "2026-02-10"
+    },
+    {
+      "id": "idsa89imns",
+      "colegioId": "idcadgb90w",
+      "cursoId": "iddfliz1hg",
+      "anio": "1er Año",
+      "nivel": "media",
+      "username": "ceu0002",
+      "password": "1234",
+      "nombres": "ANA MARIA",
+      "apellidos": "RODRIGUEZ LUNA",
+      "email": "ceu0002@ejemplo.com",
+      "city": "Ciudad Ejemplo",
+      "country": "Venezuela",
+      "course1": "1styear-ceu",
+      "group1": "",
+      "role1": "student",
+      "enrolperiod1": "365d",
+      "suspended": "0",
+      "fecha": "2026-02-10"
+    },
+    {
+      "id": "idk5ms4skm",
+      "colegioId": "ide65jdyf7",
+      "cursoId": "idpp7oi8za",
+      "anio": "1er grado",
+      "nivel": "primaria",
+      "username": "ced001",
+      "password": "1234",
+      "nombres": "LUIS",
+      "apellidos": "MARTINEZ",
+      "email": "ced001@ejemplo.com",
+      "city": "Ciudad Ejemplo",
+      "country": "Venezuela",
+      "course1": "1stgrade-ced",
+      "group1": "A",
+      "role1": "student",
+      "enrolperiod1": "365d",
+      "suspended": "0",
+      "fecha": "2026-02-11"
+    }
+  ],
+  "carnetListas": [
+    {
+      "id": "id754q5awv",
+      "nivel": "media",
+      "grado": 1,
+      "seccion": "A",
+      "clave": "demo1234",
+      "estudiantes": [
+        {
+          "usuario": "ceu0001",
+          "apellidos": "PEREZ GOMEZ",
+          "nombres": "JUAN CARLOS"
+        },
+        {
+          "usuario": "ceu0002",
+          "apellidos": "RODRIGUEZ LUNA",
+          "nombres": "ANA MARIA"
+        }
+      ]
+    }
+  ],
+  "carnetOpciones": {
+    "layout": "big",
+    "url": "ejemplo.com",
+    "upper": true
+  },
+  "trash": {
+    "colegios": [
+      {
+        "id": "id34m7cklw",
+        "nombre": "Colegio Ejemplo Eliminado"
+      }
+    ],
+    "cursos": [
+      {
+        "id": "idp6hdclkj",
+        "nombre": "Curso Ejemplo Eliminado",
+        "nivel": "media"
+      }
+    ],
+    "asignaciones": [],
+    "participantes": [
+      {
+        "id": "idgtoiazpa",
+        "colegioId": "idcadgb90w",
+        "cursoId": "idkj8tb2em",
+        "anio": "2do Año",
+        "grupo": "",
+        "fechaEliminacion": "2026-09-01",
+        "estudiantes": [
+          {
+            "id": "id72wpee9k",
+            "colegioId": "idcadgb90w",
+            "cursoId": "idkj8tb2em",
+            "anio": "2do Año",
+            "nivel": "media",
+            "username": "old0001",
+            "password": "1234",
+            "nombres": "PEDRO",
+            "apellidos": "LOPEZ",
+            "email": "old0001@ejemplo.com",
+            "city": "",
+            "country": "Venezuela",
+            "course1": "2ndyear-ceu",
+            "group1": "",
+            "role1": "student",
+            "enrolperiod1": "365d",
+            "suspended": "0",
+            "fecha": "2026-08-01"
+          }
+        ]
+      }
+    ],
+    "estudiantes": [
+      {
+        "id": "idol6hh5rv",
+        "fechaEliminacion": "2026-09-05",
+        "participante": {
+          "id": "idl5naxhd7",
+          "colegioId": "ide65jdyf7",
+          "cursoId": "idpp7oi8za",
+          "anio": "1er grado",
+          "nivel": "primaria",
+          "username": "ced099",
+          "password": "1234",
+          "nombres": "SOFIA",
+          "apellidos": "HERRERA",
+          "email": "ced099@ejemplo.com",
+          "city": "",
+          "country": "Venezuela",
+          "course1": "1stgrade-ced",
+          "group1": "A",
+          "role1": "student",
+          "enrolperiod1": "365d",
+          "suspended": "0",
+          "fecha": "2026-02-11"
+        }
+      }
+    ],
+    "carnetListas": [
+      {
+        "id": "idiz7677qt",
+        "nivel": "primaria",
+        "grado": 1,
+        "seccion": "",
+        "clave": "vieja1",
+        "estudiantes": [
+          {
+            "usuario": "ced001",
+            "apellidos": "MARTINEZ",
+            "nombres": "LUIS"
+          }
+        ],
+        "fechaEliminacion": "2026-09-10"
+      }
+    ]
+  },
+  "_academia": "tecno",
+  "_versionEsquema": 1,
+  "_exportadoEn": "2026-10-06T12:00:00.000Z",
+  "_exportadoPor": "Ejemplo",
+  "_resumen": {
+    "colegios": 2,
+    "cursos": 3,
+    "asignaciones": 2,
+    "participantes": 3,
+    "carnetListas": 1,
+    "itemsEnPapelera": 4
+  }
+}

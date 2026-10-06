@@ -1,0 +1,30 @@
+# Organizador Moodle — datos reales y secretos que nunca deben subir a git.
+# El esquema, los scripts y el ejemplo ficticio de database/ sí se versionan.
+
+# Respaldos reales exportados desde la app (contienen datos de estudiantes)
+respaldo_*.json
+**/respaldo_*.json
+
+# CSV de estudiantes (carga/descarga de Moodle)
+*.csv
+!database/scripts/ejemplo_ficticio.csv
+
+# Bases de datos locales generadas por los scripts de database/
+*.db
+*.sqlite
+*.sqlite3
+
+# Volcados SQL con datos reales (el esquema sí se versiona: database/schema.sql)
+*.sql
+!database/schema.sql
+
+# Claves de cuentas de servicio de Firebase / Google Cloud
+*serviceAccount*.json
+*-adminsdk-*.json
+*firebase-adminsdk*.json
+
+# Node
+node_modules/
+
+# Artefactos locales de Firebase CLI
+.firebase/

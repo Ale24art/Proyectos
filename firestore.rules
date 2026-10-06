@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// Reglas de Firestore — Organizador Moodle
+// Principio: denegar todo por defecto. Solo se abre lo estrictamente
+// necesario, y siempre atado a la academia autorizada para esa cuenta.
+//
+// auth_map/{uid} se crea SOLO desde la consola de Firebase o un script de
+// administración con Admin SDK (nunca desde el cliente: no hay "allow create"
+// ni "allow write" para esa colección más abajo).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Cada cuenta solo puede leer su propio mapa de academia (para mostrar
+    // "conectado como ..." en la app). Nunca puede crearlo ni modificarlo.
+    match /auth_map/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Datos de cada academia: solo accesibles para una cuenta autorizada
+    // para ESA academia exacta (ver auth_map). Esto separa tecno/cleveland
+    // a nivel de servidor, no solo por el código del cliente.
+    match /academias/{academiaId}/{document=**} {
+      allow read, write: if estaAutorizadoParaAcademia(academiaId);
+    }
+
+    function estaAutorizadoParaAcademia(academiaId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/auth_map/$(request.auth.uid))
+        && get(/databases/$(database)/documents/auth_map/$(request.auth.uid)).data.academiaId == academiaId;
+    }
+  }
+}

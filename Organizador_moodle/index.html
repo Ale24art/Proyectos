@@ -42,7 +42,7 @@
 <title>Organizador Moodle</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 <link rel="stylesheet" href="carnets.css?v=1">
 </head>
 <body>
@@ -111,6 +111,10 @@
   <div class="sidebar-footer">
     <div id="sidebar-user" style="margin-bottom:4px;font-weight:700">—</div>
     <div style="font-size:10px;opacity:0.6" id="sidebar-footer-academia">TecnoCleveland · Academia de Robótica</div>
+    <button class="sync-status-bar" id="sync-status-btn" onclick="onSyncStatusClick()" title="Estado de la sincronización con la nube" aria-label="Estado de la sincronización con la nube">
+      <span id="sync-status-icon">☁</span>
+      <span id="sync-status-text">Nube no disponible</span>
+    </button>
   </div>
 </aside>
 <button class="sidebar-show-btn" id="sidebar-show-btn" onclick="toggleSidebar()" title="Mostrar menú" aria-label="Mostrar menú">☰</button>
@@ -671,22 +675,38 @@
     <div class="page-header">
       <div>
         <div class="page-title">Respaldo de datos</div>
-        <div class="page-subtitle">La información se guarda en este navegador. Exporta seguido para no perder nada.</div>
+        <div class="page-subtitle" id="respaldo-subtitle">La información se guarda en este navegador. Exporta seguido para no perder nada.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">☁ Sincronización en la nube</div>
+      <p class="card-text" id="cloud-sync-text">Este dispositivo todavía no está conectado a la nube. Conéctalo una sola vez con un correo y una contraseña de Firebase (no es el código de acceso) para ver los mismos datos desde cualquier equipo.</p>
+      <div id="cloud-sync-actions" style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="cloud-connect-btn" onclick="abrirConectarNube()">Conectar con la nube</button>
+        <button class="btn btn-ghost" id="cloud-disconnect-btn" onclick="desconectarNube()" style="display:none">Desconectar este dispositivo</button>
+        <button class="btn btn-ghost" id="cloud-sync-now-btn" onclick="sincronizarAhoraClick()" style="display:none">↺ Sincronizar ahora</button>
       </div>
     </div>
 
     <div class="dash-grid">
       <div class="card">
         <div class="card-title">⬇ Exportar respaldo</div>
-        <p class="card-text">Descarga un archivo .json con todos los colegios, cursos modelo y cursos copiados registrados hasta ahora.</p>
+        <p class="card-text" id="export-backup-text">Descarga un archivo .json con toda la información de esta academia: colegios, cursos modelo, cursos copiados, participantes, carnets y papelera. Es tu copia de seguridad personal.</p>
         <button class="btn btn-primary" onclick="exportBackup()">Descargar respaldo (.json)</button>
+        <p class="card-text" id="last-backup-text" style="margin-top:10px;font-size:12px"></p>
       </div>
       <div class="card">
         <div class="card-title">⬆ Importar respaldo</div>
-        <p class="card-text">Restaura la información desde un archivo .json exportado previamente. Esto reemplaza los datos actuales de este navegador.</p>
+        <p class="card-text">Restaura la información desde un archivo .json exportado previamente. Esto reemplaza todos los datos actuales de este navegador (se descarga primero un respaldo de seguridad del estado previo).</p>
         <input type="file" id="import-file-input" accept="application/json" style="display:none" onchange="importBackup(event)">
         <button class="btn btn-ghost" onclick="document.getElementById('import-file-input').click()">Elegir archivo...</button>
       </div>
+    </div>
+
+    <div class="card" id="storage-quota-card" style="display:none">
+      <div class="card-title">📦 Espacio usado</div>
+      <p class="card-text" id="storage-quota-text"></p>
     </div>
 
     <div class="card">
@@ -880,6 +900,52 @@
   </div>
 </div>
 
+<!-- MODAL: Conectar con la nube (correo + contraseña de Firebase, NO el código de acceso) -->
+<div class="modal-overlay" id="modal-conectar-nube">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">☁ Conectar con la nube</div>
+    <p class="card-text" style="margin-bottom:14px">Usa el correo y la contraseña de la cuenta de nube de esta academia (no es el código de acceso de 2026/1010/ruben). Solo hace falta una vez por dispositivo.</p>
+    <div class="form-field" style="margin-bottom:10px">
+      <label>Correo</label>
+      <input type="email" id="cn-email" autocomplete="username" placeholder="admin@tecno.organizador">
+    </div>
+    <div class="form-field" style="margin-bottom:6px">
+      <label>Contraseña</label>
+      <input type="password" id="cn-password" autocomplete="current-password">
+    </div>
+    <div class="gen-error" id="cn-error" style="display:none;margin-top:8px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-conectar-nube')">Cancelar</button>
+      <button class="btn btn-primary" id="cn-submit-btn" onclick="confirmarConectarNube()">Conectar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Primera sincronización — nube vacía, hay datos locales -->
+<div class="modal-overlay" id="modal-primera-subida">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">☁ Subir los datos de este equipo</div>
+    <p class="card-text">La nube de esta academia todavía está vacía. ¿Subir ahora los datos que ya tienes en este navegador para verlos desde cualquier dispositivo?</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="pospondrSubidaInicialClick()">Más tarde</button>
+      <button class="btn btn-primary" onclick="confirmarSubidaInicialClick()">Subir ahora</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Primera conexión de este dispositivo y la nube ya tiene datos distintos -->
+<div class="modal-overlay" id="modal-conflicto-nube">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">⚠ La nube ya tiene datos de esta academia</div>
+    <p class="card-text">Este dispositivo tiene datos locales y la nube ya tiene datos guardados por otro dispositivo. Antes de continuar se descargó un respaldo de seguridad del estado actual de este equipo. ¿Qué quieres hacer?</p>
+    <div class="modal-actions" style="flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="cancelarConflictoNubeClick()">Cancelar (desconectar)</button>
+      <button class="btn btn-ghost" onclick="subirLocalConflictoNubeClick()">Subir lo de este equipo</button>
+      <button class="btn btn-primary" onclick="usarNubeConflictoNubeClick()">Usar los datos de la nube</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Vista previa de carnets -->
 <div class="modal-overlay" id="cn-preview-modal">
   <div class="modal cn-preview-box">
@@ -894,10 +960,17 @@
 <div class="toast" id="toast"></div>
 
 <script src="academias.js?v=2"></script>
+<script src="sync-core.js?v=1"></script>
+<script src="sync.js?v=1"></script>
+<script src="lib/firebase-app-compat.min.js" onerror="console.info('[index] SDK de Firebase no cargó; modo solo local.')"></script>
+<script src="lib/firebase-auth-compat.min.js" onerror="console.info('[index] SDK de Firebase (auth) no cargó; modo solo local.')"></script>
+<script src="lib/firebase-firestore-compat.min.js" onerror="console.info('[index] SDK de Firebase (firestore) no cargó; modo solo local.')"></script>
+<script src="firebase-config.js?v=1"></script>
+<script src="sync-firebase.js?v=1"></script>
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/jszip.min.js"></script>
-<script src="script.js?v=5"></script>
+<script src="script.js?v=6"></script>
 <script src="carnets-pdf.js?v=1"></script>
 <script src="carnets.js?v=2"></script>
 </body>

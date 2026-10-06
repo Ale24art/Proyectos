@@ -97,6 +97,32 @@ La columna del botón 🗑 es `position: sticky; right: 0;` (selector `#gen-prev
 
 ---
 
+## Cambios — 2026-10-06 (Fase 2: sincronización con Firebase + base de datos portable)
+
+Implementación de `INSTRUCCION_sincronizacion_firebase_y_base_de_datos.md`, Fase 2, sobre el plan aprobado en `PLAN_sincronizacion_firebase.md`, con los ajustes que el dueño del proyecto indicó al aprobar (ver ese mensaje de aprobación): códigos de acceso sin alargar, vínculo de nube por correo/contraseña real en vez de contraseña derivada del código, polling (sin listener en tiempo real), capa abstracta estricta, preservación de orden, borrados con línea base + tombstones, modo "solo local" si el SDK no carga, y `codigo_hash` con bcrypt/argon2 en el esquema SQL.
+
+**Archivos nuevos en `Organizador_moodle/` (se publican):**
+- `sync-core.js` — lógica pura de sincronización (diff, fusión, tombstones), sin DOM ni `firebase.*`. La usan `sync.js`/`sync-firebase.js` y también los scripts de prueba en `database/scripts/` vía `require()`.
+- `sync.js` — define `window.Sync`, la única interfaz que usa `script.js` para hablar de "la nube" (`autenticar`, `cargar`, `encolar`, `sincronizarAhora`, `estado`, y los eventos de UI). Nunca llama a `firebase.*`.
+- `sync-firebase.js` — el ÚNICO archivo que llama a `firebase.*`. Si el SDK no cargó o `firebase-config.js` no tiene credenciales reales, no registra ningún adaptador y `window.Sync` queda en modo "solo local" sin lanzar errores (ver §9a).
+- `firebase-config.js` — configuración pública del proyecto Firebase, con marcadores a rellenar (no son secretos; ver §8.4).
+- `lib/firebase-app-compat.min.js`, `lib/firebase-auth-compat.min.js`, `lib/firebase-firestore-compat.min.js` — SDK compat v10 vendorizado (sin CDN en producción).
+
+**Archivos nuevos fuera de `Organizador_moodle/` (NO se publican):**
+- `firestore.rules` — reglas de Firestore, denegar por defecto.
+- `database/schema.sql`, `database/README.md`, `database/MIGRACION_A_SERVIDOR_PROPIO.md`, `database/scripts/*.js`, `database/scripts/ejemplo_ficticio.json` — base de datos portable estilo Moodle (Parte B). Ver §9b.
+- `.gitignore` (raíz) — excluye respaldos reales, CSV de estudiantes, `.db`/`.sql` con datos reales y claves de servicio.
+
+**Archivos modificados:**
+- `script.js` (`?v=6`): `saveData()` ahora llama a `Sync.encolar()` al final (si `window.Sync` existe); reescritura completa de `exportBackup()`/`importBackup()` (Parte C: metadatos, sin pretty-print, respaldo automático antes de reemplazar, resumen, confirmación extra si la nube está vinculada); nuevas funciones de UI de sincronización (`renderRespaldoView`, `renderSyncStatus`, `abrirConectarNube`, `confirmarConectarNube`, `desconectarNube`, `sincronizarAhoraClick`, etc.); dos puentes globales (`window.__syncAplicarDataRemota`, `window.__syncRespaldoSilencioso`) para que `sync.js` pueda pedirle a `script.js` que aplique datos fusionados o descargue un respaldo silencioso, sin que `sync.js` toque el DOM de la app.
+- `index.html` (`styles.css?v=4`, `script.js?v=6`): nuevo orden de carga de `<script>` (ver §2); indicador de estado en el pie del sidebar; tres modales nuevos (`modal-conectar-nube`, `modal-primera-subida`, `modal-conflicto-nube`); tarjeta "☁ Sincronización en la nube" y tarjeta de aviso de cuota en la vista Respaldo.
+- `styles.css` (`?v=4`): estilos de `.sync-status-bar` (icono + texto, colores por estado, animación de "sincronizando" respetando `prefers-reduced-motion`).
+- `firebase.json`: se agregó el bloque `"firestore": { "rules": "firestore.rules" }`; `"hosting"` no se tocó.
+
+**Lo que NO cambió a propósito:** `login.html` (el vínculo con la nube es un paso separado, dentro de la app, no en el login — ver §3.7); `academias.js` (los códigos `2026`/`1010`/`ruben` siguen igual); `.firebaserc`; el esquema de `data` en `localStorage` (los metadatos de sincronización viven en claves de `localStorage` aparte, nunca dentro de `data` ni del respaldo — ver §4.4).
+
+---
+
 ## 1. Resumen ejecutivo
 
 **Qué es:** app web estática (HTML+CSS+JS puro, sin build ni backend) para que TecnoCleveland (robótica) y Cleveland English Institute (inglés) controlen qué curso modelo de Moodle han copiado a cada colegio, en qué año/grado, cuántas clases tiene subidas, generen usuarios Moodle en bloque y generen carnets de acceso imprimibles.
@@ -105,14 +131,16 @@ La columna del botón 🗑 es `position: sticky; right: 0;` (selector `#gen-prev
 
 **Cómo se despliega:** Firebase Hosting, proyecto `moodle-organizador` (`.firebaserc`), publicando únicamente la carpeta `Organizador_moodle/` (`firebase.json`). El despliegue es manual (`firebase deploy --only hosting`); este documento no lo ejecuta.
 
-**Dónde viven los datos:** exclusivamente en el `localStorage` del navegador de cada usuario, en una clave distinta por academia (`tc_organizador_data` / `cc_organizador_data`). **No hay Firebase Database ni ningún backend.** La única forma de mover datos entre equipos es el archivo de Respaldo (.json) exportado/importado manualmente.
+**Dónde viven los datos:** principalmente en el `localStorage` del navegador de cada usuario, en una clave distinta por academia (`tc_organizador_data` / `cc_organizador_data`). **Desde la Fase 2, esos mismos datos se pueden sincronizar además con Firestore** si el dispositivo se vincula una vez con una cuenta de nube (ver §3.7) — pero `localStorage` sigue siendo la fuente inmediata: la app abre y guarda local primero, siempre, con o sin nube. La otra forma de mover datos entre equipos (y la única si nunca se usa la nube) es el archivo de Respaldo (.json) exportado/importado manualmente.
 
-**Las 5 reglas que nunca se deben romper:**
+**Las reglas que nunca se deben romper:**
 1. `tc_organizador_data` es la clave real de TecnoCleveland en producción — **nunca** cambiarla ni renombrarla.
 2. Cualquier cambio al esquema de `data` debe seguir cargando respaldos y `localStorage` antiguos sin `carnetListas`/`carnetOpciones`/`participantes`/`trash.estudiantes`/`trash.carnetListas` (ver §4.2, patrón `parsed.x || valorPorDefecto`).
-3. Las dos academias deben quedar siempre con datos y catálogos separados: nada de `script.js`, `carnets.js` ni `carnets-pdf.js` debe filtrar datos entre `ACADEMIAS.tecno` y `ACADEMIAS.cleveland`.
+3. Las dos academias deben quedar siempre con datos y catálogos separados: nada de `script.js`, `carnets.js`, `carnets-pdf.js`, `sync.js`, `sync-firebase.js`, `firestore.rules` ni el esquema SQL debe filtrar datos entre `tecno` y `cleveland`. En la nube esa separación la garantizan las reglas de Firestore (`firestore.rules` + `auth_map`), no solo el código del cliente.
 4. `carnets-pdf.js` y `stickers/js/stickers.js` son hoy dos copias del mismo motor de PDF (ver §11.1): un cambio de diseño/colores en uno no se refleja en el otro a menos que se edite a mano.
-5. Nada de código genera `git push` ni `firebase deploy` automáticamente; esos pasos los ejecuta la persona dueña del repo.
+5. Nada de código genera `git push`, `firebase deploy` ni `firebase deploy --only firestore:rules` automáticamente; esos pasos los ejecuta la persona dueña del repo.
+6. Nada de `script.js`, `carnets.js` ni `login.html` llama a `firebase.*` directamente — solo hablan con `window.Sync` (`sync.js`). El único archivo que toca `firebase.*` es `sync-firebase.js` (ver §3.7 y §9a). Esto es lo que permite mudarse a un servidor propio reemplazando un solo archivo.
+7. Nunca se sube a git un respaldo `.json` real, un CSV con datos de estudiantes, una clave de cuenta de servicio de Firebase, ni una base `.db`/`.sql` con datos reales — el `.gitignore` de la raíz ya los excluye; no lo debilites.
 
 ---
 
@@ -122,27 +150,37 @@ Carpeta publicada en producción: `Organizador_moodle/`. Todo lo que está fuera
 
 | Archivo | Líneas (aprox.) | Propósito | Globales / funciones clave que expone | Depende de |
 |---|---|---|---|---|
-| `academias.js` | 34 | Config multi-academia. Debe cargar **primero**. | `ACADEMIAS`, `getAcademiaActual()`, `ACADEMIA_ACTUAL` | `sessionStorage.tcAcademia` |
-| `login.html` | 187 | Pantalla de login, independiente (su propio `<style>`/`<script>` inline). | `USERS`, `doLogin()`, `toggleEye()` | nada (standalone) |
-| `index.html` | 898 | Shell de la app: sidebar, las 8 vistas, 5 modales (incluido el nuevo de eliminar estudiante), carga de scripts. | — (solo markup + loader inline) | todos los `.js`/`.css` siguientes |
-| `script.js` | 2121 | Núcleo del organizador: datos, navegación, Colegios, Cursos modelo, Asignaciones, Generador de usuarios, Buscar, Respaldo, Papelera. | `data`, `loadData/saveData`, `showView`, `esc/uid/normalize/slugify`, `ACADEMIA_ACTUAL` (de academias.js) | `academias.js` |
+| `academias.js` | 36 | Config multi-academia. Debe cargar **primero**. | `ACADEMIAS`, `getAcademiaActual()`, `ACADEMIA_ACTUAL` | `sessionStorage.tcAcademia` |
+| `login.html` | 186 | Pantalla de login, independiente (su propio `<style>`/`<script>` inline). Sin cambios en la Fase 2: el vínculo con la nube se hace dentro de la app, no aquí. | `USERS`, `doLogin()`, `toggleEye()` | nada (standalone) |
+| `sync-core.js` | 314 | Lógica pura de sincronización (diff, fusión, tombstones). Sin DOM ni `firebase.*`. También la usan los scripts de `database/scripts/` vía `require()`. | `window.SyncCore` (y `module.exports` en Node) | nada |
+| `sync.js` | 338 | `window.Sync`: interfaz genérica que usa `script.js` para hablar de la nube (autenticar, cargar, encolar, sincronizar, estado, eventos de UI). Modo "solo local" si nadie se registra como adaptador. | `window.Sync` | `academias.js`, `sync-core.js` |
+| `sync-firebase.js` | 144 | Adaptador de Firebase. **Único archivo que llama a `firebase.*`.** Si el SDK no cargó, no hace nada (ver §9a). | se registra en `window.Sync._registrarAdaptador(...)` | SDK de Firebase (`lib/firebase-*-compat.min.js`), `firebase-config.js`, `sync.js` |
+| `firebase-config.js` | 44 | Configuración pública del proyecto Firebase (marcadores a rellenar). | `firebase.initializeApp(...)` | SDK de Firebase |
+| `index.html` | 977 | Shell de la app: sidebar (con el indicador de sincronización), las 8 vistas, 8 modales (incluidos los 3 de sincronización), carga de scripts. | — (solo markup + loader inline) | todos los `.js`/`.css` siguientes |
+| `script.js` | 2373 | Núcleo del organizador: datos, navegación, Colegios, Cursos modelo, Asignaciones, Generador de usuarios, Buscar, Respaldo (ahora con sincronización), Papelera. | `data`, `loadData/saveData`, `showView`, `esc/uid/normalize/slugify`, `renderRespaldoView/renderSyncStatus`, `ACADEMIA_ACTUAL` (de academias.js) | `academias.js`, `window.Sync` (opcional) |
 | `carnets-pdf.js` | 179 | Motor de dibujo del carnet en PDF (jsPDF). IIFE aislado. | `window.CarnetsPDF = {buildPDF, gradeLabel, academias, levels, layouts}` | `lib/jspdf.umd.min.js` |
 | `carnets.js` | 702 | Vista "Generador de carnets" (los 2 modos + opciones de impresión). IIFE aislado. | `window.Carnets = {init, render, closePreview}` | `script.js` (datos y utilidades globales), `carnets-pdf.js`, `lib/jszip.min.js` |
-| `carnets.css` | 198 | Estilos de `#view-carnets`, todo con prefijo `.cn-`. | — | `styles.css` (variables) |
-| `styles.css` | 548 | Estilos de toda la app + modo oscuro + variables por academia. Incluye clases `.acc-*` (acordeón) y `.pg-*` (paginación). | — | — |
+| `carnets.css` | 197 | Estilos de `#view-carnets`, todo con prefijo `.cn-`. | — | `styles.css` (variables) |
+| `styles.css` | 638 | Estilos de toda la app + modo oscuro + variables por academia. Incluye clases `.acc-*` (acordeón), `.pg-*` (paginación) y `.sync-status-bar` (indicador de nube). | — | — |
 | `lib/jspdf.umd.min.js` | 394 | jsPDF 2.5.2, vendored (sin CDN). | `window.jspdf` | — |
 | `lib/jszip.min.js` | 9 | JSZip 3.10.1, vendored. | `window.JSZip` | — |
 | `lib/xlsx.full.min.js` | 24 | SheetJS (xlsx), vendored. | `window.XLSX` | — |
-| `LEEME.txt` | 118 | Manual de usuario final (no técnico). Algo desactualizado: no menciona Generador de usuarios, paginación ni papelera ampliada. | — | — |
+| `lib/firebase-app-compat.min.js` | 1 (minificado) | SDK Firebase App compat v10.14.1, vendorizado desde `gstatic.com` (no CDN en producción). | `window.firebase` | — |
+| `lib/firebase-auth-compat.min.js` | 1 (minificado) | SDK Firebase Auth compat v10.14.1, vendorizado. | `firebase.auth()` | `lib/firebase-app-compat.min.js` |
+| `lib/firebase-firestore-compat.min.js` | 1 (minificado) | SDK Firebase Firestore compat v10.14.1, vendorizado. | `firebase.firestore()` | `lib/firebase-app-compat.min.js` |
+| `LEEME.txt` | 118 | Manual de usuario final (no técnico). Algo desactualizado: no menciona Generador de usuarios, paginación, papelera ampliada ni la nube. | — | — |
 
 **Orden de carga en `index.html`** (obligatorio, no se puede reordenar):
 ```
-academias.js?v=1  →  lib/xlsx.full.min.js  →  lib/jspdf.umd.min.js  →  lib/jszip.min.js
-  →  script.js?v=3  →  carnets-pdf.js?v=1  →  carnets.js?v=2
+academias.js?v=2  →  sync-core.js?v=1  →  sync.js?v=1
+  →  lib/firebase-app-compat.min.js  →  lib/firebase-auth-compat.min.js  →  lib/firebase-firestore-compat.min.js
+  →  firebase-config.js?v=1  →  sync-firebase.js?v=1
+  →  lib/xlsx.full.min.js  →  lib/jspdf.umd.min.js  →  lib/jszip.min.js
+  →  script.js?v=6  →  carnets-pdf.js?v=1  →  carnets.js?v=2
 ```
-`script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes. `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
+`script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes que todo. `sync.js` también lee `ACADEMIA_ACTUAL` (para `STORAGE_KEY`/`ACADEMIA_ID`) y `SyncCore` (de `sync-core.js`), por eso va justo después. Los tres `<script>` del SDK de Firebase llevan `onerror` inline que solo deja un `console.info` — si no cargan (sin internet, bloqueados), el resto de la carga continúa sin lanzar errores. `firebase-config.js` y `sync-firebase.js` comprueban `typeof firebase !== 'undefined'` antes de usarlo; si no está, no registran ningún adaptador y `window.Sync` queda en modo solo local (ver §9a). `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting (estado actual):** `script.js?v=5`, `academias.js?v=2`, `styles.css?v=3`, `carnets.js?v=2`, `carnets-pdf.js?v=1`, `carnets.css?v=1`. Los archivos de `lib/` y `login.html` no llevan parámetro de versión — inconsistencia conocida (ver §11.3).
+**Cache-busting (estado actual):** `script.js?v=6`, `academias.js?v=2`, `styles.css?v=4`, `carnets.js?v=2`, `carnets-pdf.js?v=1`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propio login, su propio `script.js`, y un `firebase-config.js` (ese proyecto sí usa o usó Firebase real). No comparte nada de código con `Organizador_moodle/`.
 
@@ -231,14 +269,17 @@ cursos:   esTecno ? DEFAULT_CURSOS.map(...)   : [],
 
 El texto del botón en pantalla cambia según `esTecno` (ver `applyAcademiaBranding()`), pero el comportamiento es el mismo para ambas academias.
 
-### 3.5 Respaldo (export/import JSON)
-- **Exportar** (`exportBackup()`): `{ ...data, _academia: ACADEMIA_ACTUAL.id }` → descarga `respaldo_<academiaId>_<YYYY-MM-DD>.json`.
+### 3.5 Respaldo (export/import JSON) — formato ampliado en la Fase 2
+- **Exportar** (`exportBackup()`, vía `construirPayloadRespaldo()`): `{ ...data, _academia, _versionEsquema: 1, _exportadoEn: new Date().toISOString(), _exportadoPor: sessionStorage.tcUser, _resumen: {colegios, cursos, asignaciones, participantes, carnetListas, itemsEnPapelera} }` → descarga `respaldo_<academiaId>_<YYYY-MM-DD>.json`, **sin pretty-print** (`JSON.stringify(payload)`, no `(..., null, 2)` — archivos más chicos). El spread de `data` ya incluía la papelera completa desde antes de la Fase 2; lo nuevo son solo los campos `_*`. Actualiza `tc_last_backup_<academiaId>` (preferencia de UI, fuera de `data`) y vuelve a pintar la vista Respaldo.
 - **Importar** (`importBackup(event)`):
-  1. Valida que `parsed.colegios` y `parsed.cursos` sean arrays (si no, rechaza con "Formato no válido").
+  1. Valida que `parsed.colegios` y `parsed.cursos` sean arrays (si no, rechaza con "Formato no válido") — igual que antes; sigue tolerando respaldos antiguos sin `_versionEsquema` ni el resto de los metadatos `_*`.
   2. Si `parsed._academia` existe y **no coincide** con `ACADEMIA_ACTUAL.id`, pide confirmación explícita.
-  3. Pide una segunda confirmación genérica.
-  4. Reconstruye `data` con el mismo patrón de *defaults* que `loadData()` (ver §4.2).
-- No hay validación estructural más allá de que `colegios`/`cursos` sean arrays.
+  3. Pide una segunda confirmación genérica ("esto reemplazará todos los datos actuales…").
+  4. **Nueva en la Fase 2:** si la nube está vinculada, pide una tercera confirmación ("esto también reemplazará los datos guardados en la nube…") antes de continuar.
+  5. **Nueva en la Fase 2:** si `data` actual no está vacío (`estaDataVacia()`), descarga automáticamente `respaldo_<academiaId>_<fecha>_previo-a-importar.json` antes de reemplazar — red de seguridad silenciosa.
+  6. Reconstruye `data` con el mismo patrón de *defaults* que `loadData()` (ver §4.2).
+  7. **Nueva en la Fase 2:** muestra un toast-resumen con los conteos de lo importado (`resumenDe(data)`), en vez de un simple "✓".
+- No hay validación estructural más allá de que `colegios`/`cursos` sean arrays — sigue siendo así tras la Fase 2; no se agregó validación de esquema más estricta.
 
 ### 3.6 Marca visual dinámica y preferencias de UI
 - `document.body.setAttribute('data-academia', ACADEMIA_ACTUAL.id)` (en `applyAcademiaBranding()`).
@@ -257,6 +298,33 @@ El texto del botón en pantalla cambia según `esTecno` (ver `applyAcademiaBrand
 | `tc_sidebar_collapsed` | `'1'` = colapsado | `html.sidebar-collapsed` — aplica en script inline del `<head>` (sin flash); función `toggleSidebar()` en `script.js` |
 
 Ambas son preferencias visuales del navegador: **no se incluyen en el Respaldo**, no tocan `data`, y no usan `tc_organizador_data` ni `cc_organizador_data`.
+
+### 3.7 Vínculo con la nube (opcional, por dispositivo)
+
+**El código de acceso de `login.html` NO cambió y sigue siendo el único requisito para abrir la app.** La nube es un paso **adicional y opcional**, que se hace una sola vez por dispositivo desde dentro de la app (sidebar → "☁ Conectar con la nube", o la tarjeta "☁ Sincronización en la nube" en la vista Respaldo) — nunca desde `login.html`.
+
+**Por qué no es una contraseña derivada del código:** la Fase 1 planteó derivar la contraseña de Firebase a partir del código (`2026`, `1010`, `ruben`) más un secreto fijo en el código fuente. Se decidió explícitamente **no** usar ese camino: cualquier secreto guardado en `login.html`/`script.js` es legible por quien inspeccione el sitio publicado, así que una contraseña derivada de ahí nunca es más segura que el código mismo. En su lugar:
+- El código de acceso (`2026`/`1010`/`ruben`) sigue siendo exactamente igual que antes — **no se alargó** — y sigue siendo solo local (nunca se envía a Firebase).
+- Cada dispositivo que quiera sincronizar se vincula una vez con un **correo y una contraseña reales de Firebase Authentication** (no derivados de nada, los define la persona dueña del proyecto directamente en la consola de Firebase — ver §5 del plan / pasos manuales al final de este documento). Ese vínculo se guarda con persistencia local de Firebase (`firebase.auth().setPersistence(LOCAL)`), así que no hay que repetirlo en cada visita, solo si se borra el almacenamiento del navegador o se usa un dispositivo nuevo.
+- Hay **tres cuentas de Firebase**, una por código: `admin@tecno.organizador` (código `2026`), `asistente@tecno.organizador` (código `1010`), `ruben@cleveland.organizador` (código `ruben`). Un documento `auth_map/{uid}` (creado solo desde la consola de Firebase, nunca desde el cliente) le dice a las reglas de Firestore a qué academia pertenece cada cuenta.
+
+**Flujo (`sync.js` / `sync-firebase.js`):**
+1. `Sync.autenticar(correo, contraseña)` llama al adaptador, que hace `signInWithEmailAndPassword` y lee `auth_map/{uid}`. Si la academia de esa cuenta no coincide con `ACADEMIA_ACTUAL.id`, se cierra la sesión inmediatamente y se rechaza — así, con el código `ruben` (academia `cleveland`) nunca se puede vincular una cuenta de `tecno`, aunque alguien conociera esa contraseña.
+2. Primera vinculación de un dispositivo **cuando la nube ya tiene datos de otro dispositivo y este equipo también tiene datos propios**: no se fusiona en silencio. Se descarga un respaldo de seguridad del estado local y se muestra el modal "⚠ La nube ya tiene datos de esta academia" con tres opciones: usar los datos de la nube, subir los de este equipo, o cancelar (desvincula el dispositivo sin tocar nada). Ver `modal-conflicto-nube` en `index.html` y `resolverConflicto*` en `sync.js`.
+3. Primera vinculación **cuando la nube está vacía y este equipo tiene datos**: modal "☁ Subir los datos de este equipo" (`modal-primera-subida`) con las opciones "Subir ahora" / "Más tarde".
+4. En el uso normal (ninguno de los dos casos anteriores, o ya resuelto una vez): la sincronización es automática y silenciosa — ver §3.7.1.
+
+**3.7.1 Cuándo se sincroniza (polling, sin tiempo real):**
+- Al abrir la app (`Sync.cargar()`, en paralelo a que la app ya se muestra con los datos locales — nunca bloquea el arranque).
+- Al volver a la pestaña (`visibilitychange`): primero se lee **solo** el `_rev` del documento raíz de la academia (1 lectura); si no cambió desde la última vez, no se descarga nada más.
+- Con el botón "↺ Sincronizar ahora" (sidebar / vista Respaldo): sube lo pendiente y luego hace la misma revisión de `_rev`.
+- **No hay listener en tiempo real** (`onSnapshot`): con 3 usuarios que raramente coinciden, el polling es más barato en lecturas y evita el riesgo de que un cambio remoto le pise la vista previa editable del Generador de usuarios a alguien que está escribiendo en ese momento.
+
+**3.7.2 Qué se sincroniza y cómo (ver también §4.4):** todo `data` se reparte en varias colecciones de Firestore bajo `academias/{academiaId}/` (una por `colegios`, `cursos`, `asignaciones`, `carnetListas`, `carnetOpciones`, las listas de participantes agrupadas por colegio+curso+año+grupo, y las 6 colecciones de papelera), nunca en un único documento — un documento de Firestore tiene un límite de 1 MiB, y `data` completo puede superarlo con miles de participantes. Cada subida solo escribe los documentos que cambiaron (diff contra una línea base local), nunca todo de una vez.
+
+**3.7.3 Indicador de estado:** pie del sidebar, botón `#sync-status-btn` (`renderSyncStatus()` en `script.js`, suscrito a `Sync.onCambioEstado()`): "Nube no disponible" (sin adaptador — SDK bloqueado o sin internet), "Conectar con la nube" (adaptador disponible, dispositivo no vinculado), "Sincronizado ✓", "Sincronizando…", "Cambios pendientes ●", "Sin conexión ✕", "Error de sincronización ⚠". Funciona en claro/oscuro con las variables CSS existentes.
+
+**3.7.4 Si el SDK de Firebase no carga:** `window.Sync` existe igual (lo define `sync.js`, que no depende de Firebase) pero sin ningún adaptador registrado — `Sync.nubeDisponible()` devuelve `false`, el indicador muestra "Nube no disponible", y todo lo demás (login, Colegios, Generador, Carnets, Respaldo local) funciona exactamente igual que si este archivo no existiera. Nunca se lanza una excepción por esto (ver `firebase-config.js` y el inicio de `sync-firebase.js`).
 
 ---
 
@@ -358,11 +426,25 @@ data = {
 Un `localStorage` o respaldo de cualquier versión anterior (sin `carnetListas`, sin `carnetOpciones`, sin `trash.estudiantes`, sin `trash.carnetListas`) carga sin romperse. **Importante:** `loadData()` e `importBackup()` NO están factorizados en una función compartida — si se agrega una clave nueva al esquema, hay que editar **ambas** funciones, más `freshData()`.
 
 ### 4.3 Flujo de datos
-1. **Carga:** `DOMContentLoaded` → `loadData()` → `applyAcademiaBranding()` → `renderAll()` → `Carnets.init()`.
-2. **Modificación:** cada acción muta `data` en memoria y llama a `saveData()` de inmediato (sin debounce).
-3. **Guardado:** `saveData()` → `localStorage.setItem(STORAGE_KEY, JSON.stringify(data))`, con `try/catch` (si falla, toast de advertencia).
-4. **Respaldo:** `exportBackup()` descarga `data` actual + `_academia`. `importBackup()` reemplaza `data` completo.
-5. **Restauración desde Papelera:** `restore*()` saca el ítem de `data.trash.*` y lo devuelve al array activo; `permaDelete*()` lo quita definitivamente.
+1. **Carga:** `DOMContentLoaded` → `loadData()` → `applyAcademiaBranding()` → `renderAll()` → `Carnets.init()` → (en paralelo, si `window.Sync` existe) `Sync.cargar()`.
+2. **Modificación:** cada acción muta `data` en memoria y llama a `saveData()` de inmediato (sin debounce local).
+3. **Guardado:** `saveData()` → `localStorage.setItem(STORAGE_KEY, JSON.stringify(data))` (con `try/catch`; si falla, toast de advertencia) → `Sync.encolar()` (si hay nube vinculada, sube el diff con un debounce de 3 s; si no, no hace nada).
+4. **Respaldo:** `exportBackup()` descarga `data` actual + metadatos (`_academia`, `_versionEsquema`, `_exportadoEn`, `_exportadoPor`, `_resumen` — ver §3.5 y §C). `importBackup()` reemplaza `data` completo (con respaldo automático del estado previo si no estaba vacío, y confirmación extra si la nube está vinculada).
+5. **Restauración desde Papelera:** `restore*()` saca el ítem de `data.trash.*` y lo devuelve al array activo; `permaDelete*()` lo quita definitivamente. Ambos pasan por `saveData()`, así que se sincronizan igual que cualquier otro cambio (ver §4.4).
+6. **Bajada de la nube** (`revisarYBajar()` en `sync.js`): fusiona lo remoto con `data` local entidad por entidad (nunca un reemplazo total) y llama a `window.__syncAplicarDataRemota(nuevaData, {sobrescritos})`, que `script.js` implementa como `data = nuevaData; saveData(); renderAll();`.
+
+### 4.4 Metadatos de sincronización (fuera de `data`, fuera del Respaldo)
+
+Ningún dato de la capa de sincronización vive dentro de `data` ni se incluye en el Respaldo `.json` — serían "datos transitorios de sincronización" que la instrucción de Fase 2 pide excluir explícitamente. Viven en claves de `localStorage` aparte, con el mismo prefijo que `STORAGE_KEY` (así nunca se mezclan entre `tecno` y `cleveland`):
+
+| Clave | Contenido | La escribe |
+|---|---|---|
+| `<STORAGE_KEY>__sync_baseline` | Línea base: hash + orden (+ clave natural, para listas) de cada entidad ya sincronizada. Permite calcular el diff sin releer la nube completa. | `sync.js` |
+| `<STORAGE_KEY>__sync_rev` | Último `_rev` del documento raíz de la academia que este dispositivo ya descargó. | `sync.js` |
+| `<STORAGE_KEY>__sync_cloud_email` | Correo con el que este dispositivo está vinculado (solo para mostrarlo en la UI — nunca la contraseña). | `sync.js` |
+| `tc_last_backup_<academiaId>` | Fecha (`YYYY-MM-DD`) del último respaldo `.json` descargado, para el aviso de la vista Respaldo (§C.4). | `script.js` (`marcarUltimoRespaldo()`) |
+
+Si se agrega una clave nueva de este tipo en el futuro, debe seguir este mismo patrón: prefijo `STORAGE_KEY + '__sync_...'`, nunca dentro de `data`, nunca copiada al Respaldo.
 
 ---
 
@@ -401,7 +483,7 @@ if (id === 'dashboard') renderDashboard();
 
 - **Nombre de archivo en descargas CSV/XLSX:** la función auxiliar `nombreArchivoDescarga(anio, grupo, extension)` produce nombres como `5to año A.csv`, `1er grado.xlsx`. Reglas: año/grado en minúsculas (`toLocaleLowerCase('es')`), grupo se agrega tal cual si no está vacío, caracteres no permitidos en Windows se reemplazan por `-`. Usada por: "⬇ Descargar CSV" de la vista previa, "⬇ CSV" de "Años ya generados", "⬇ CSV" de Ver/Editar, y "⬇ Descargar XLSX" de Participantes en Colegios. El reporte completo de Buscar y los respaldos `.json` **no** usan esta función.
 
-- **Respaldo (`respaldo`):** exportar/importar JSON, y "Restablecer colegios y cursos modelo" (ver §3.4 — ahora envía a Papelera antes de reemplazar).
+- **Respaldo (`respaldo`):** `renderRespaldoView()` (nueva en la Fase 2) dibuja esta vista según `Sync.estadoVinculo()`. Tarjeta "☁ Sincronización en la nube" (estado + botones "Conectar con la nube" / "Desconectar este dispositivo" / "↺ Sincronizar ahora", según corresponda). Tarjeta "⬇ Exportar respaldo" con el texto actualizado ("descarga **toda** la información… incluida la papelera") y la línea "Último respaldo descargado: [fecha]" (aviso naranja si pasaron más de 7 días o nunca se descargó). Tarjeta "⬆ Importar respaldo" (ahora con respaldo automático del estado previo y confirmación extra si la nube está activa). Tarjeta "📦 Espacio usado" (solo visible si `data` supera ~4 MB serializado). Y "Restablecer colegios y cursos modelo" (ver §3.4 — sigue enviando a Papelera antes de reemplazar; sin cambios de comportamiento en la Fase 2, pero ahora se sincroniza igual que cualquier otro cambio vía `saveData()` → `Sync.encolar()`).
 
 - **Papelera (`trash`):** 6 secciones con Restaurar / Eliminar para siempre: colegios, cursos copiados (asignaciones), listas de participantes del Generador, **estudiantes eliminados individualmente**, **listas de carnets eliminadas**, y cursos modelo. Botón global "Vaciar papelera" y el badge del sidebar cubren las 6 secciones (`trashTotal()` suma los 6 arrays).
 
@@ -542,16 +624,29 @@ En `carnets.js` y `script.js`, todos los valores dinámicos se pasan por `esc()`
   "hosting": {
     "public": "Organizador_moodle",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
   }
 }
 ```
-No hay `headers` (sin caché explícita), ni `rewrites`/`redirects`. `.firebaserc`: `{ "projects": { "default": "moodle-organizador" } }`.
+El bloque `"firestore"` se agregó en la Fase 2 para poder publicar `firestore.rules` con `firebase deploy --only firestore:rules`. **`"hosting"` no se tocó** — sigue publicando únicamente `Organizador_moodle/`, así que `firestore.rules`, `database/` y este documento nunca llegan a producción vía Hosting. No hay `headers` (sin caché explícita), ni `rewrites`/`redirects`. `.firebaserc` no se tocó: `{ "projects": { "default": "moodle-organizador" } }`.
 
 ### 8.2 Versionado de assets
-Ver tabla de §2 — solo 5 de los ~10 archivos estáticos llevan `?v=`. Los archivos de `lib/` y `login.html` siguen sin parámetro.
+Ver tabla de §2. Los archivos de `lib/` (incluidos los tres nuevos del SDK de Firebase) y `login.html` siguen sin parámetro `?v=` — inconsistencia conocida, no crítica (ver §11.3).
 
-### 8.3 Pasos manuales
-`git push` y `firebase deploy --only hosting` los ejecuta la persona dueña del repo.
+### 8.3 Reglas de Firestore (nuevo en la Fase 2)
+`firestore.rules` (raíz del repo, fuera de `Organizador_moodle/`) deniega todo por defecto y solo abre `academias/{id}/**` a una cuenta autorizada para esa `id` exacta (vía `auth_map/{uid}`, ver §3.7 y §5 de los pasos manuales más abajo). Se publica por separado de Hosting:
+```bash
+firebase deploy --only firestore:rules --project moodle-organizador
+```
+Un cambio en las reglas **nunca** se aplica solo. Hay que: (1) crear/mantener los documentos `auth_map/{uid}` correctos en la consola, (2) publicar las reglas con el comando de arriba, y (3) verificar los 5 casos de prueba de la lista de pasos manuales antes de confiar en que la separación tecno/cleveland funciona en producción.
+
+### 8.4 `firebase-config.js` no es secreto
+Los valores de `Organizador_moodle/firebase-config.js` (`apiKey`, `authDomain`, `projectId`, etc.) son la configuración pública de un proyecto Firebase — cualquier app web de Firebase los expone en el navegador. La protección real de los datos son las reglas de Firestore (§8.3), no mantener este archivo en secreto. Mientras tenga los marcadores `TU_..._AQUI`, la app arranca en modo solo local (ver §9a).
+
+### 8.5 Pasos manuales
+`git push`, `firebase deploy --only hosting` y `firebase deploy --only firestore:rules` los ejecuta la persona dueña del repo. La lista numerada completa (consola de Firebase + terminal, en orden) está al final de este documento, después de §12.
 
 ---
 
@@ -586,8 +681,15 @@ Para que aparezca en el arranque/restablecimiento: agregar a `DEFAULT_CURSOS` en
 **g) Migrar el esquema de datos sin romper respaldos antiguos**
 1. Agregar la clave nueva a `freshData()` con su valor por defecto.
 2. Agregar la misma clave con el mismo patrón `parsed.nuevaClave || default` en **ambos**: `loadData()` y `importBackup()`.
-3. `exportBackup()` no necesita cambios (hace `{ ...data, _academia: ... }`).
-4. Actualizar el ejemplo de esquema de §4.1 de este documento.
+3. `exportBackup()` no necesita cambios (usa `construirPayloadRespaldo()`, que hace `{ ...data, _academia, ... }`).
+4. Si la nube está activa, revisar si la clave nueva necesita su propio mapeo en `SyncCore.construirIndiceLocal()`/`entidadesADatos()` (`Organizador_moodle/sync-core.js`) — de lo contrario, esa clave nueva no se sincronizará.
+5. Actualizar el ejemplo de esquema de §4.1 de este documento, y las columnas correspondientes en `database/schema.sql` + `database/scripts/mapeo.js` si el dato también debe viajar a la base SQL portable.
+
+**h) Mudar la app a un servidor propio (sin Firebase)**
+Ver `database/MIGRACION_A_SERVIDOR_PROPIO.md` para la guía completa. En resumen: `Organizador_moodle/` es estática y se copia tal cual; lo único que hay que reemplazar es `sync-firebase.js` por un adaptador nuevo (p. ej. `sync-rest.js`) que implemente las mismas 7 funciones contra una API propia, y registrarlo con `window.Sync._registrarAdaptador(...)`. `sync.js`, `sync-core.js` y `script.js` no cambian. `database/schema.sql` + `database/scripts/respaldo_a_sql.js` sirven para cargar los datos actuales (vía un Respaldo `.json` exportado desde la app) en la base SQL que use ese servidor nuevo.
+
+**i) Agregar una academia nueva que use la nube**
+Además de los pasos de (a): crear su cuenta de Firebase Authentication, agregar su documento `auth_map/{uid}` con el `academiaId` nuevo (consola de Firebase, nunca desde el cliente), y confirmar que `firestore.rules` no necesita cambios (la regla `estaAutorizadoParaAcademia()` ya es genérica por `academiaId`, no hay nada hardcodeado a `tecno`/`cleveland` ahí). Si se llega a implementar soporte multi-organización en la UI (no implementado hoy, ver §11), revisar también que no se haya colado un nuevo `=== 'tecno'` en `script.js` o `sync.js`.
 
 ---
 
@@ -633,12 +735,22 @@ Hasta el commit `1ff425c`, `deleteManualList()` y "Eliminar todas las listas" qu
 ### 11.4 Decisiones heredadas de instrucciones anteriores, confirmadas vigentes en el código
 - Interfaz en español para ambas academias (`idiomaUI: 'es'`); solo el contenido *impreso* de los carnets de Cleveland sale en inglés.
 - Cleveland arranca siempre con catálogo vacío.
-- No hay Firebase Database: todo en `localStorage`. `firebase-config.js` no existe en `Organizador_moodle/`.
+- `localStorage` sigue siendo la fuente inmediata de datos (local-first); **desde la Fase 2 existe además sincronización opcional con Firestore** si el dispositivo se vincula — ver §3.7. `firebase-config.js` SÍ existe ahora en `Organizador_moodle/` (con marcadores hasta que se completen los valores reales).
 - El carnet-PDF `clean()` convierte a `'?'` cualquier carácter fuera de Latin-1 que no tenga forma NFD ≤255 (comillas tipográficas, guiones largos, emoji). Acentos y eñe español no se ven afectados (están dentro de Latin-1).
 
-### 11.5 Lo que no se pudo verificar
-- No se probó la app en un navegador real durante esta revisión. Todo lo listado en el checklist se verificó por lectura directa del código.
+### 11.6 Deuda técnica y riesgos nuevos de la Fase 2 (sincronización)
+- **Límite de 500 operaciones por batch de Firestore** (`sync-firebase.js` → `escribirLote()`): con los volúmenes actuales (participantes agrupados por lista, no un documento por estudiante) un solo batch alcanza en el uso normal de 3 personas. Si algún día una sola sincronización necesitara tocar más de 500 documentos de golpe (por ejemplo, una importación de un respaldo gigantesco con la nube ya vinculada), el `batch.commit()` fallaría. No se implementó división en varios batches — está documentado como límite conocido, no como bug silencioso.
+- **La fusión automática (`SyncCore.fusionarEntidades`) es por entidad completa, no por campo.** Si dos dispositivos editan el **mismo** colegio/curso/asignación/lista mientras ambos están desconectados entre sí, gana la versión que se sube primero a la nube cuando ambos sincronizan después (*last-write-wins*, con aviso "☁ Se actualizaron N registro(s) desde otro dispositivo"). No hay fusión de campos individuales (por ejemplo, si A cambia el nombre de un colegio y B cambia sus clases en la misma asignación, no se combinan — una de las dos ediciones completas se pierde). Para 3 usuarios que casi nunca editan la misma entidad en simultáneo, se consideró un riesgo aceptable frente a la complejidad de una fusión por campo.
+- **El respaldo automático "por si acaso" no se descarga en cada sincronización rutinaria**, solo en los dos momentos de mayor riesgo: la primera vinculación de un dispositivo cuando hay datos distintos en ambos lados (§3.7, paso 2), y `importBackup()`. Descargarlo en cada fusión silenciosa (que puede ocurrir varias veces por sesión, cada vez que se vuelve a la pestaña) sería más una molestia que una protección real.
+- **`eliminado_en` aproximado para colegios/cursos/asignaciones en `database/scripts/mapeo.js`**: el formato del Respaldo no guarda la fecha exacta en que esos tres tipos fueron enviados a la Papelera (a diferencia de `trash.estudiantes` y `trash.carnetListas`, que sí la llevan). Los scripts de `database/` usan la fecha de exportación del respaldo como aproximación — ver `database/README.md`.
+- **No se implementó `firestore_a_sql.js`** (decisión explícita: no es necesario por ahora; el camino principal es Respaldo `.json` → SQL, que no requiere credenciales de Admin SDK).
+- **Multi-organización:** `sync-core.js`, `firestore.rules` (vía `auth_map`) y `database/schema.sql` ya usan un identificador genérico de organización (`academiaId`/`academia_id`) en vez de comparaciones fijas a `'tecno'`/`'cleveland'`. Esto no significa que la Fase 2 implemente soporte multi-organización en la UI — `script.js` sigue teniendo comparaciones `ACADEMIA_ACTUAL.id === 'tecno'` heredadas (§3.4, §9a) que una tercera academia con catálogo propio seguiría necesitando resolver a mano.
+
+### 11.7 Lo que no se pudo verificar
+- No se probó la app en un navegador real durante esta revisión. Todo lo listado en el checklist se verificó por lectura directa del código, más pruebas automatizadas en Node para la lógica de sincronización y de la base de datos (ver `database/scripts/test_*.js`).
 - No se pudo determinar si el campo `notas` de las asignaciones se usa en algún punto de la UI más allá del modal de edición y el CSV de reporte (`exportReportCSV`). No aparece en ninguna tabla de la UI. Puede ser intencional (campo "solo para el reporte") o un olvido; no hay evidencia concluyente en el código.
+- **Fase 2 — no se pudo probar contra un proyecto Firebase real:** no hay credenciales de un proyecto Firebase en este entorno (y no correspondía inventarlas). `firebase-config.js` tiene marcadores; `sync-firebase.js` se verificó por lectura y porque su contrato (7 funciones) se probó exhaustivamente contra una "nube" falsa en memoria (`database/scripts/test_sync_dos_dispositivos.js`), pero nunca se ejecutó contra Firestore real ni se probaron las reglas con el emulador de Firebase. Los pasos manuales para verificarlo en producción están al final de este documento.
+- **Fase 2 — no se pudo ejecutar `database/schema.sql` contra un motor MySQL/MariaDB real** (no hay uno disponible en este entorno). Se verificó por lectura y, en su lugar, se probó un esquema estructuralmente equivalente en SQLite (`database/scripts/sqlite-schema.js`, con `node:sqlite`) con la prueba de ida y vuelta completa (`database/scripts/test_idavuelta.js`), incluido un caso con 5.000 participantes.
 
 ---
 
@@ -652,12 +764,13 @@ La v4 (documentacion_organizador_moodle.md) queda como referencia histórica
 pero ya no es la fuente de verdad.
 
 Lee todo el documento antes de proponer cualquier cambio: describe el modelo
-de datos real, las reglas de numeración de usuarios, el multi-academia y el
-Generador de carnets, todo verificado contra el código fuente.
+de datos real, las reglas de numeración de usuarios, el multi-academia, el
+Generador de carnets y la sincronización con Firebase (Fase 2, §3.7 y §4.4),
+todo verificado contra el código fuente.
 
 Reglas de trabajo:
-- No hagas git push, git commit ni firebase deploy bajo ninguna circunstancia;
-  eso lo hago yo manualmente.
+- No hagas git push, git commit, firebase deploy ni firebase deploy --only
+  firestore:rules bajo ninguna circunstancia; eso lo hago yo manualmente.
 - Todo en español (comentarios, mensajes, textos de interfaz), salvo el
   contenido impreso de los carnets de Cleveland English Institute, que va en
   inglés.
@@ -668,6 +781,12 @@ Reglas de trabajo:
   importBackup(), más el default en freshData()). Ver §9g.
 - tc_organizador_data es la clave real de TecnoCleveland en producción:
   no se toca, no se renombra.
+- Capa abstracta: script.js, carnets.js y login.html solo hablan con
+  window.Sync (sync.js). Nunca llames a firebase.* fuera de sync-firebase.js.
+  Ver §3.7 y §9h.
+- Nunca subas a git un respaldo .json real, un CSV de estudiantes, una clave
+  de cuenta de servicio de Firebase, ni una base .db/.sql con datos reales
+  (el .gitignore de la raíz ya los excluye).
 - Antes de tocar carnets-pdf.js, revisa si el cambio también aplica a
   stickers/js/stickers.js (son dos copias del mismo motor de PDF, ver §11.1).
 - Si agregas una función de utilidad nueva (acordeón, paginación, etc.),
@@ -676,3 +795,26 @@ Reglas de trabajo:
 
 [Pega aquí el contenido completo de "nueva documentacion.md"]
 ```
+
+---
+
+## Pasos manuales pendientes (consola de Firebase + terminal)
+
+Nada de lo anterior ejecuta estos pasos — los hace la persona dueña del repo, en este orden. Ver también §8.3–§8.5.
+
+**Antes de que la nube funcione en producción:**
+1. **Habilitar Firestore** — consola Firebase → `moodle-organizador` → Build → Firestore Database → "Crear base de datos" → región más cercana → modo "Producción".
+2. **Habilitar Firebase Authentication** — Build → Authentication → "Comenzar" → proveedor "Correo electrónico/contraseña" → Activar.
+3. **Crear las 3 cuentas de nube** (tú eliges las contraseñas; no se guardan en ningún archivo de este repo):
+   - `admin@tecno.organizador` (academia `tecno`, corresponde al código `2026`)
+   - `asistente@tecno.organizador` (academia `tecno`, corresponde al código `1010`)
+   - `ruben@cleveland.organizador` (academia `cleveland`, corresponde al código `ruben`)
+   Anota el UID que Firebase le asigna a cada una (Authentication → Usuarios).
+4. **Crear los documentos `auth_map`** — Firestore → colección `auth_map` → un documento por UID del paso 3, con los campos `academiaId` (`"tecno"` o `"cleveland"`) y `nombre`.
+5. **Obtener la configuración web** — `firebase apps:sdkconfig web --project moodle-organizador` (o consola → Configuración del proyecto → tu app web → "Configuración del SDK") y copiar los valores en `Organizador_moodle/firebase-config.js`, reemplazando los marcadores `TU_..._AQUI`.
+6. **Publicar las reglas de Firestore** — `firebase deploy --only firestore:rules --project moodle-organizador`.
+7. **Verificar las reglas** con las cuentas del paso 3 (consola Firestore → "Reglas" → "Playground", o manualmente desde la consola del navegador ya logueado): cuenta de `tecno` no puede leer `academias/cleveland/**`; cuenta de `cleveland` no puede leer `academias/tecno/**`; sin sesión no se lee nada.
+8. **Desplegar la app actualizada** — `firebase deploy --only hosting --project moodle-organizador`.
+9. **Vincular cada dispositivo** — abrir la app, iniciar sesión con el código de siempre, ir a la vista Respaldo → "☁ Conectar con la nube" → correo + contraseña del paso 3. La primera vez que haya datos en ambos lados (equipo + nube), seguir el modal de decisión (ver §3.7, paso 2).
+
+Todo lo anterior requiere el plan **Spark (gratuito)** de Firebase — no se necesita el plan Blaze para nada de lo implementado en esta fase.

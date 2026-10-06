@@ -270,6 +270,14 @@ function saveData() {
     console.error('Error guardando datos', e);
     showToast('⚠ No se pudo guardar. ¿Espacio de almacenamiento lleno?');
   }
+  // La nube (si está vinculada) se actualiza de forma asíncrona y nunca bloquea
+  // este guardado local — ver sync.js. Si no hay adaptador, encolar() no hace nada.
+  if (window.Sync) Sync.encolar();
+}
+
+/* ── Tamaño aproximado de `data` en localStorage, para el aviso de cuota (Parte C) ── */
+function tamanoDatosBytes() {
+  try { return new Blob([JSON.stringify(data)]).size; } catch (e) { return JSON.stringify(data).length; }
 }
 
 /* ── ARRANQUE ── */
@@ -340,6 +348,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('am-fecha').value = todayStr();
+
+  // La nube se intenta en paralelo y nunca retrasa la apertura de la app
+  // (ya renderizada arriba con los datos locales). Ver sync.js.
+  if (window.Sync) {
+    Sync.onCambioEstado(renderSyncStatus);
+    Sync.onPrimeraSubidaDisponible(() => document.getElementById('modal-primera-subida').classList.add('active'));
+    Sync.onConflictoInicial(() => document.getElementById('modal-conflicto-nube').classList.add('active'));
+    Sync.onSobrescritos(lista => showToast(`☁ Se actualizaron ${lista.length} registro(s) desde otro dispositivo.`));
+    renderSyncStatus(Sync.estado());
+    renderRespaldoView();
+    Sync.cargar();
+  }
 });
 
 function renderAll() {
@@ -350,6 +370,7 @@ function renderAll() {
   renderBuscar();
   renderTrash();
   updateTrashBadge();
+  if (window.Sync) renderRespaldoView();
 }
 
 /* ── NAVEGACIÓN ── */
@@ -370,6 +391,7 @@ function showView(id) {
   if (id === 'buscar') renderBuscar();
   if (id === 'trash') renderTrash();
   if (id === 'dashboard') renderDashboard();
+  if (id === 'respaldo' && window.Sync) renderRespaldoView();
 
   document.querySelector('.sidebar').classList.remove('sidebar-active');
   document.getElementById('sidebar-overlay').classList.remove('active');
@@ -1826,10 +1848,54 @@ function downloadFile(content, filename, mime) {
   URL.revokeObjectURL(url);
 }
 
+const RESPALDO_VERSION_ESQUEMA = 1;
+
+function estaDataVacia(d) {
+  return !d || (!d.colegios.length && !d.cursos.length && !d.asignaciones.length &&
+    !d.participantes.length && !d.carnetListas.length && !trashTotalDe(d));
+}
+function trashTotalDe(d) {
+  const t = (d && d.trash) || {};
+  return (t.colegios||[]).length + (t.cursos||[]).length + (t.asignaciones||[]).length +
+    (t.participantes||[]).length + (t.estudiantes||[]).length + (t.carnetListas||[]).length;
+}
+function resumenDe(d) {
+  return {
+    colegios: d.colegios.length, cursos: d.cursos.length, asignaciones: d.asignaciones.length,
+    participantes: d.participantes.length, carnetListas: d.carnetListas.length,
+    itemsEnPapelera: trashTotalDe(d)
+  };
+}
+function construirPayloadRespaldo() {
+  const resumen = resumenDe(data);
+  return {
+    ...data,
+    _academia: ACADEMIA_ACTUAL.id,
+    _versionEsquema: RESPALDO_VERSION_ESQUEMA,
+    _exportadoEn: new Date().toISOString(),
+    _exportadoPor: sessionStorage.getItem('tcUser') || '',
+    _resumen: resumen
+  };
+}
+function marcarUltimoRespaldo() {
+  try { localStorage.setItem('tc_last_backup_' + ACADEMIA_ACTUAL.id, todayStr()); } catch (e) {}
+  if (typeof renderRespaldoView === 'function') renderRespaldoView();
+}
+
 function exportBackup() {
-  const payload = { ...data, _academia: ACADEMIA_ACTUAL.id };
-  downloadFile(JSON.stringify(payload, null, 2), `respaldo_${ACADEMIA_ACTUAL.id}_${todayStr()}.json`, 'application/json');
-  showToast('Respaldo descargado ✓');
+  const payload = construirPayloadRespaldo();
+  downloadFile(JSON.stringify(payload), `respaldo_${ACADEMIA_ACTUAL.id}_${todayStr()}.json`, 'application/json');
+  marcarUltimoRespaldo();
+  showToast('Respaldo descargado ✓ (incluye papelera)');
+}
+
+// Respaldo silencioso (sin toast ni interacción): se usa como red de seguridad
+// justo antes de que la sincronización reemplace datos locales por los de la
+// nube en un escenario de riesgo (ver sync.js / window.__syncRespaldoSilencioso).
+function descargarRespaldoSilencioso(sufijo) {
+  if (estaDataVacia(data)) return;
+  const payload = construirPayloadRespaldo();
+  downloadFile(JSON.stringify(payload), `respaldo_${ACADEMIA_ACTUAL.id}_${todayStr()}_${sufijo || 'automatico'}.json`, 'application/json');
 }
 
 function importBackup(event) {
@@ -1845,7 +1911,15 @@ function importBackup(event) {
       if (parsed._academia && parsed._academia !== ACADEMIA_ACTUAL.id) {
         if (!confirm('Este respaldo es de otra academia. ¿Importar de todos modos?')) { event.target.value = ''; return; }
       }
-      if (!confirm('Esto reemplazará todos los datos actuales en este navegador con los del archivo. ¿Continuar?')) return;
+      if (!confirm('Esto reemplazará todos los datos actuales en este navegador con los del archivo. ¿Continuar?')) { event.target.value = ''; return; }
+      if (window.Sync && Sync.estadoVinculo().vinculado) {
+        if (!confirm('La sincronización con la nube está activa: esto también reemplazará los datos guardados en la nube (y los de los demás dispositivos). ¿Continuar?')) { event.target.value = ''; return; }
+      }
+
+      // Red de seguridad: si lo que hay ahora en este navegador no está vacío,
+      // se descarga automáticamente antes de perderlo (§C.2).
+      if (!estaDataVacia(data)) descargarRespaldoSilencioso('previo-a-importar');
+
       const trash = parsed.trash || {};
       data = {
         colegios: parsed.colegios || [],
@@ -1867,7 +1941,8 @@ function importBackup(event) {
       renderAll();
       if (window.Carnets && typeof window.Carnets.render === 'function') window.Carnets.render();
       closeCollegeDetail();
-      showToast('Respaldo importado ✓');
+      const r = resumenDe(data);
+      showToast(`Importado ✓ — ${r.colegios} colegios, ${r.cursos} cursos, ${r.asignaciones} cursos copiados, ${r.participantes} participantes, ${r.carnetListas} listas de carnets, ${r.itemsEnPapelera} en papelera`);
     } catch (e) {
       console.error(e);
       showToast('⚠ El archivo no es un respaldo válido');
@@ -1876,6 +1951,171 @@ function importBackup(event) {
   };
   reader.readAsText(file);
 }
+
+/* ════════════════════════════════════════════════════════════
+   SINCRONIZACIÓN EN LA NUBE — interfaz de usuario (habla solo con
+   window.Sync; nunca con firebase.* directamente, ver sync.js)
+   ════════════════════════════════════════════════════════════ */
+const UMBRAL_AVISO_CUOTA_BYTES = 4 * 1024 * 1024; // 4 MB de ~5 MB disponibles en localStorage
+
+function renderRespaldoView() {
+  if (!document.getElementById('view-respaldo')) return;
+  const v = window.Sync ? Sync.estadoVinculo() : { vinculado: false, email: null };
+
+  const subtitle = document.getElementById('respaldo-subtitle');
+  const cloudText = document.getElementById('cloud-sync-text');
+  const connectBtn = document.getElementById('cloud-connect-btn');
+  const disconnectBtn = document.getElementById('cloud-disconnect-btn');
+  const syncNowBtn = document.getElementById('cloud-sync-now-btn');
+
+  if (!window.Sync || !Sync.nubeDisponible()) {
+    if (subtitle) subtitle.textContent = 'La información se guarda en este navegador. Exporta seguido para no perder nada.';
+    if (cloudText) cloudText.textContent = 'La sincronización en la nube no está disponible en este momento (sin conexión, o el servicio está bloqueado). La app sigue funcionando normalmente con lo guardado en este navegador.';
+    if (connectBtn) connectBtn.style.display = 'none';
+    if (disconnectBtn) disconnectBtn.style.display = 'none';
+    if (syncNowBtn) syncNowBtn.style.display = 'none';
+  } else if (v.vinculado) {
+    if (subtitle) subtitle.textContent = 'Tus datos se guardan en este navegador y, además, están sincronizados en la nube.';
+    if (cloudText) cloudText.innerHTML = `Este dispositivo está conectado como <b>${esc(v.email || '')}</b>. El respaldo .json sigue siendo tu copia personal descargable.`;
+    if (connectBtn) connectBtn.style.display = 'none';
+    if (disconnectBtn) disconnectBtn.style.display = '';
+    if (syncNowBtn) syncNowBtn.style.display = '';
+  } else {
+    if (subtitle) subtitle.textContent = 'La información se guarda en este navegador. Exporta seguido para no perder nada.';
+    if (cloudText) cloudText.textContent = 'Este dispositivo todavía no está conectado a la nube. Conéctalo una sola vez con un correo y una contraseña de Firebase (no es el código de acceso) para ver los mismos datos desde cualquier equipo.';
+    if (connectBtn) connectBtn.style.display = '';
+    if (disconnectBtn) disconnectBtn.style.display = 'none';
+    if (syncNowBtn) syncNowBtn.style.display = 'none';
+  }
+
+  const lastBackupEl = document.getElementById('last-backup-text');
+  if (lastBackupEl) {
+    const fecha = localStorage.getItem('tc_last_backup_' + ACADEMIA_ACTUAL.id);
+    if (!fecha) {
+      lastBackupEl.innerHTML = '⚠ Todavía no has descargado ningún respaldo.';
+    } else {
+      const dias = Math.floor((Date.now() - new Date(fecha + 'T00:00:00').getTime()) / 86400000);
+      lastBackupEl.innerHTML = dias > 7
+        ? `⚠ Último respaldo descargado: ${fmtDate(fecha)} (hace ${dias} días).`
+        : `Último respaldo descargado: ${fmtDate(fecha)}.`;
+    }
+  }
+
+  const quotaCard = document.getElementById('storage-quota-card');
+  const quotaText = document.getElementById('storage-quota-text');
+  if (quotaCard && quotaText) {
+    const bytes = tamanoDatosBytes();
+    if (bytes > UMBRAL_AVISO_CUOTA_BYTES) {
+      quotaCard.style.display = '';
+      quotaText.innerHTML = `Tus datos ocupan aproximadamente <b>${(bytes/1024/1024).toFixed(1)} MB</b> de los ~5 MB que suele permitir el navegador. Considera vaciar la Papelera o descargar un respaldo y archivarlo fuera de la app.`;
+    } else {
+      quotaCard.style.display = 'none';
+    }
+  }
+}
+
+function renderSyncStatus(estado) {
+  const icon = document.getElementById('sync-status-icon');
+  const text = document.getElementById('sync-status-text');
+  if (!icon || !text) return;
+  const MAPA = {
+    'sin-nube':     { icono: '☁', texto: 'Nube no disponible' },
+    'desconectado': { icono: '☁', texto: 'Conectar con la nube' },
+    'sincronizado': { icono: '✓', texto: 'Sincronizado' },
+    'sincronizando':{ icono: '↺', texto: 'Sincronizando…' },
+    'pendiente':    { icono: '●', texto: 'Cambios pendientes' },
+    'sin-conexion': { icono: '✕', texto: 'Sin conexión' },
+    'error':        { icono: '⚠', texto: 'Error de sincronización' }
+  };
+  const m = MAPA[estado.tipo] || MAPA['sin-nube'];
+  icon.textContent = m.icono;
+  text.textContent = m.texto;
+  const btn = document.getElementById('sync-status-btn');
+  if (btn) { btn.title = estado.detalle || m.texto; btn.setAttribute('data-estado', estado.tipo); }
+  renderRespaldoView();
+}
+
+function onSyncStatusClick() {
+  if (!window.Sync || !Sync.nubeDisponible()) { showToast('La nube no está disponible en este dispositivo.'); return; }
+  const v = Sync.estadoVinculo();
+  if (!v.vinculado) { abrirConectarNube(); return; }
+  showView('respaldo');
+}
+
+function abrirConectarNube() {
+  document.getElementById('cn-email').value = '';
+  document.getElementById('cn-password').value = '';
+  document.getElementById('cn-error').style.display = 'none';
+  document.getElementById('modal-conectar-nube').classList.add('active');
+  setTimeout(() => document.getElementById('cn-email').focus(), 50);
+}
+
+async function confirmarConectarNube() {
+  const email = document.getElementById('cn-email').value.trim();
+  const password = document.getElementById('cn-password').value;
+  const errBox = document.getElementById('cn-error');
+  errBox.style.display = 'none';
+  if (!email || !password) { errBox.textContent = 'Escribe el correo y la contraseña.'; errBox.style.display = ''; return; }
+  const btn = document.getElementById('cn-submit-btn');
+  btn.disabled = true;
+  const r = await Sync.autenticar(email, password);
+  btn.disabled = false;
+  if (!r.ok) { errBox.textContent = r.mensaje; errBox.style.display = ''; return; }
+  closeModal('modal-conectar-nube');
+  showToast(r.mensaje);
+}
+
+async function desconectarNube() {
+  if (!confirm('Esto desconecta este dispositivo de la nube. Tus datos locales y los de la nube NO se borran. ¿Continuar?')) return;
+  await Sync.cerrarVinculo();
+  showToast('Dispositivo desconectado de la nube');
+}
+
+async function sincronizarAhoraClick() {
+  showToast('Sincronizando…');
+  await Sync.sincronizarAhora();
+}
+
+function confirmarSubidaInicialClick() {
+  closeModal('modal-primera-subida');
+  Sync.confirmarSubidaInicial();
+  showToast('Subiendo tus datos a la nube…');
+}
+function pospondrSubidaInicialClick() {
+  closeModal('modal-primera-subida');
+  Sync.posponerSubidaInicial();
+}
+
+function cancelarConflictoNubeClick() {
+  closeModal('modal-conflicto-nube');
+  Sync.resolverConflictoCancelar();
+  showToast('Se canceló la conexión con la nube.');
+}
+function subirLocalConflictoNubeClick() {
+  closeModal('modal-conflicto-nube');
+  Sync.resolverConflictoSubirLocal();
+  showToast('Subiendo los datos de este equipo a la nube…');
+}
+function usarNubeConflictoNubeClick() {
+  closeModal('modal-conflicto-nube');
+  Sync.resolverConflictoUsarNube();
+  showToast('Usando los datos de la nube en este equipo…');
+}
+
+// Puente hacia sync.js: aplica datos ya fusionados por sync.js (diferencia por
+// entidad, no un reemplazo total — ver SyncCore.fusionarEntidades). El respaldo
+// automático "por si acaso" ya se descargó antes, en el momento de riesgo real
+// (primera vinculación con datos distintos en la nube, o importBackup), no en
+// cada fusión rutinaria — descargar un archivo en cada sincronización silenciosa
+// sería más una molestia que una protección.
+window.__syncAplicarDataRemota = function (nuevaData, info) {
+  data = nuevaData;
+  saveData();
+  renderAll();
+  if (window.Carnets && typeof window.Carnets.render === 'function') window.Carnets.render();
+  if (currentCollegeId) renderCollegeDetail();
+};
+window.__syncRespaldoSilencioso = function () { descargarRespaldoSilencioso(); };
 
 function resetCatalogs() {
   if (!confirm('Esto restablece la lista de colegios y cursos modelo a los valores base. Los cursos copiados que ya registraste se conservan. ¿Continuar?')) return;
