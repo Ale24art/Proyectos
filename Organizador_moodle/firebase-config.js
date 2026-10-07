@@ -23,12 +23,12 @@
   }
 
   const FIREBASE_CONFIG = {
-    apiKey: 'TU_API_KEY_AQUI',
+    apiKey: 'AIzaSyB3mSJ8wvpP1SmZbBFh0wOBgB4wHeccUM0',
     authDomain: 'moodle-organizador.firebaseapp.com',
     projectId: 'moodle-organizador',
-    storageBucket: 'moodle-organizador.appspot.com',
-    messagingSenderId: 'TU_SENDER_ID_AQUI',
-    appId: 'TU_APP_ID_AQUI'
+    storageBucket: 'moodle-organizador.firebasestorage.app',
+    messagingSenderId: '826463412639',
+    appId: '1:826463412639:web:ce11618edf7d357e87ddaa'
   };
 
   if (FIREBASE_CONFIG.apiKey.indexOf('TU_') === 0) {
