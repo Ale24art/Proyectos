@@ -131,14 +131,20 @@
     return [...map.values()].sort((a, b) => a.nivel === b.nivel ? a.grado - b.grado : (a.nivel === 'media' ? -1 : 1));
   }
 
+  // Nombre de archivo para PDF de un grado: "1er año.pdf", "2do grado.pdf", etc.
+  // Para secciones: "1er año - Sección A.pdf"
+  function _nombrePDFGrado(nivel, grado, seccion) {
+    const base = window.CarnetsPDF.gradeLabel('es', nivel, grado).toLocaleLowerCase('es');
+    return seccion ? `${base} - Sección ${seccion}.pdf` : `${base}.pdf`;
+  }
+
   function gradeJob(lists, key) {
     const g = groupByGrade(lists).find(x => x.nivel + '|' + x.grado === key);
     if (!g) return null;
-    const nombreGradoCarnet = window.CarnetsPDF.gradeLabel(ACADEMIA_ACTUAL.idiomaCarnet, g.nivel, g.grado);
     const nombreGradoUI = window.CarnetsPDF.gradeLabel(ACADEMIA_ACTUAL.idiomaUI, g.nivel, g.grado);
     return {
       doc: () => makeDoc(studentsOfLists(g.lists), g.nivel, g.grado, ''),
-      name: `${prefixCarnet()}_${slugify(ACADEMIA_ACTUAL.nombre)}_${levelTag(g.nivel)}_${slugify(nombreGradoCarnet)}.pdf`,
+      name: _nombrePDFGrado(g.nivel, g.grado, ''),
       title: nombreGradoUI
     };
   }
@@ -146,12 +152,11 @@
     const l = lists.find(x => x.id === id);
     if (!l) return null;
     const Lx = L();
-    const nombreGradoCarnet = window.CarnetsPDF.gradeLabel(ACADEMIA_ACTUAL.idiomaCarnet, l.nivel, l.grado);
     const nombreGradoUI = window.CarnetsPDF.gradeLabel(ACADEMIA_ACTUAL.idiomaUI, l.nivel, l.grado);
     const sectionText = l.seccion ? `${Lx.sectionWord} ${l.seccion}` : '';
     return {
       doc: () => makeDoc(toCanonicalStudents(l), l.nivel, l.grado, sectionText),
-      name: `${prefixCarnet()}_${slugify(ACADEMIA_ACTUAL.nombre)}_${levelTag(l.nivel)}_${slugify(nombreGradoCarnet)}${l.seccion ? '_' + Lx.sectionFile + '-' + slugify(l.seccion) : ''}.pdf`,
+      name: _nombrePDFGrado(l.nivel, l.grado, l.seccion),
       title: nombreGradoUI + (l.seccion ? ' · ' + Lx.secName(l.seccion) : '')
     };
   }
@@ -204,6 +209,56 @@
         saveBlob(blob, `${prefixCarnet()}_${slugify(ACADEMIA_ACTUAL.nombre)}.zip`);
         showToast(Lx.doneZip);
       } catch (e) { console.error(e); showToast(Lx.fail); }
+      btn.disabled = false; btn.textContent = label;
+    }, 30);
+  }
+
+  /* ═════════ PDF único de nivel — Función 3 ═════════ */
+  function _renderNivelPDFBotones() {
+    const btnMedia    = document.getElementById('cn-pbtn-media-pdf');
+    const btnPrimaria = document.getElementById('cn-pbtn-primaria-pdf');
+    if (!btnMedia || !btnPrimaria) return;
+    btnMedia.style.display    = pResultLists.some(l => l.nivel === 'media')    ? '' : 'none';
+    btnPrimaria.style.display = pResultLists.some(l => l.nivel === 'primaria') ? '' : 'none';
+  }
+
+  function descargarNivelCarnetsPDF(nivel, btn) {
+    const Lx = L();
+    const listas = pResultLists.filter(l => l.nivel === nivel);
+    if (!listas.length) return;
+    if (!window.CarnetsPDF || !window.CarnetsPDF.buildPDFMultiGrade) {
+      showToast('⚠ Motor de PDF no disponible.');
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Generando PDF…';
+
+    setTimeout(() => {
+      try {
+        const grades = groupByGrade(listas).map(g => {
+          const totalCarnets = g.lists.reduce((s, l) => s + l.estudiantes.length, 0);
+          const gradeLabel = window.CarnetsPDF.gradeLabel(ACADEMIA_ACTUAL.idiomaUI, g.nivel, g.grado);
+          return {
+            nivel: g.nivel,
+            grado: g.grado,
+            students: studentsOfLists(g.lists),
+            labelTop: `${gradeLabel} · ${totalCarnets} carnet${totalCarnets === 1 ? '' : 's'}`
+          };
+        });
+        const doc = window.CarnetsPDF.buildPDFMultiGrade(grades, {
+          academiaId: ACADEMIA_ACTUAL.id,
+          lang: ACADEMIA_ACTUAL.idiomaCarnet,
+          layout: (data.carnetOpciones && data.carnetOpciones.layout) || 'big',
+          url:    (data.carnetOpciones && data.carnetOpciones.url)    || 'cursoscleveland.com',
+          titulo: nivel === 'media' ? 'Educación Media' : 'Educación Primaria'
+        });
+        const filename = nivel === 'media' ? 'Carnets Media.pdf' : 'Carnets Primaria.pdf';
+        saveBlob(doc.output('blob'), filename);
+        showToast(Lx.doneOne);
+      } catch (e) {
+        console.error(e);
+        showToast('⚠ Ocurrió un problema al crear el PDF.');
+      }
       btn.disabled = false; btn.textContent = label;
     }, 30);
   }
@@ -608,6 +663,7 @@
       editable: false, showCurso: true,
       totalElId: 'cn-ptotal', zipBtnId: 'cn-pbtn-zip'
     });
+    _renderNivelPDFBotones();
     const card = document.getElementById('cn-presults-card');
     card.style.display = resultLists.length ? '' : 'none';
     if (resultLists.length) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -669,6 +725,7 @@
       pResultLists = [];
       document.getElementById('cn-presults-card').style.display = 'none';
       document.getElementById('cn-pwarnings').innerHTML = '';
+      _renderNivelPDFBotones();
       renderPTables();
     });
     document.getElementById('cn-pempty-btn').addEventListener('click', () => showView('generador'));
@@ -680,6 +737,10 @@
     });
     document.getElementById('cn-btn-generate').addEventListener('click', onGenerateParticipantes);
     document.getElementById('cn-pbtn-zip').addEventListener('click', e => downloadZip(pResultLists, e.currentTarget));
+    const btnMP = document.getElementById('cn-pbtn-media-pdf');
+    const btnPP = document.getElementById('cn-pbtn-primaria-pdf');
+    if (btnMP) btnMP.addEventListener('click', e => descargarNivelCarnetsPDF('media', e.currentTarget));
+    if (btnPP) btnPP.addEventListener('click', e => descargarNivelCarnetsPDF('primaria', e.currentTarget));
     renderPTables();
 
     document.getElementById('cn-preview-modal').addEventListener('click', e => { if (e.target.id === 'cn-preview-modal') closePreview(); });
@@ -694,6 +755,7 @@
     if (!pColegioId || pColegioId !== prevColegio) {
       pResultLists = [];
       document.getElementById('cn-presults-card').style.display = 'none';
+      _renderNivelPDFBotones();
       renderPTables();
     }
   }

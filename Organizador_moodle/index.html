@@ -303,6 +303,17 @@
         <div class="pg-count" id="cd-part-count-label"></div>
         <div class="modal-actions" style="justify-content:flex-start;margin-top:12px" id="cd-part-actions">
           <button class="btn btn-ghost" onclick="descargarXLSXParticipantesColegio()">⬇ Descargar XLSX</button>
+          <button class="btn btn-ghost" onclick="descargarPDFParticipantesColegio(this)" aria-label="Descargar PDF del año/grado seleccionado">⬇ Descargar PDF</button>
+        </div>
+        <div id="cd-nivel-download-block" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:none">
+          <div style="font-size:0.875rem;font-weight:600;color:var(--text-muted);margin-bottom:8px">Descargar todo el nivel</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <select id="cd-nivel-select" onchange="onCdNivelChange()" aria-label="Nivel educativo para descarga completa" style="max-width:240px">
+              <option value="">Elige un nivel…</option>
+            </select>
+            <button class="btn btn-ghost" id="cd-nivel-btn-xlsx" onclick="descargarNivelXLSXClick()" disabled aria-label="Descargar XLSX del nivel seleccionado">⬇ XLSX</button>
+            <button class="btn btn-ghost" id="cd-nivel-btn-pdf" onclick="descargarNivelPDFClick(this)" disabled aria-label="Descargar PDF del nivel seleccionado">⬇ PDF</button>
+          </div>
         </div>
         <div class="empty-state" id="cd-part-empty" style="display:none">
           Aún no se han generado usuarios para este colegio. Ve a Generador de usuarios.
@@ -593,6 +604,10 @@
             <span class="cn-total" id="cn-ptotal"></span>
             <button class="btn btn-primary sm" id="cn-pbtn-zip" type="button" style="display:none">Descargar todos los grados (.zip)</button>
           </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <button class="btn btn-ghost sm" id="cn-pbtn-media-pdf" type="button" style="display:none" aria-label="Descargar todos los carnets de Educación Media en un solo PDF">Descargar todos los carnets de Educación Media (PDF único)</button>
+          <button class="btn btn-ghost sm" id="cn-pbtn-primaria-pdf" type="button" style="display:none" aria-label="Descargar todos los carnets de Educación Primaria en un solo PDF">Descargar todos los carnets de Educación Primaria (PDF único)</button>
         </div>
         <div id="cn-presults"></div>
       </div>
@@ -977,8 +992,8 @@
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/jszip.min.js"></script>
-<script src="script.js?v=7"></script>
-<script src="carnets-pdf.js?v=1"></script>
-<script src="carnets.js?v=2"></script>
+<script src="script.js?v=9"></script>
+<script src="carnets-pdf.js?v=2"></script>
+<script src="carnets.js?v=3"></script>
 </body>
 </html>

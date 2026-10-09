@@ -140,6 +140,48 @@
   }
 
   /**
+   * Dibuja los carnets de un grado en un doc jsPDF ya existente.
+   * La página actual debe ser la primera hoja de este grado.
+   * Agrega footers de "academia · grado · p/total" por cada página del grado.
+   * Si labelTop está presente, pone un rótulo pequeño en el margen superior de la primera página.
+   */
+  function _dibujarGradoEnDoc(doc, students, A, L, gradeTextCarnet, gradeTextFooter, labelTop) {
+    const startPage = doc.getNumberOfPages();
+    const usableW = PAGE.w - 2 * PAGE.mx, usableH = PAGE.h - PAGE.top - PAGE.bottom;
+    const sw = (usableW - (L.cols - 1) * L.gapX) / L.cols;
+    const sh = (usableH - (L.rows - 1) * L.gapY) / L.rows;
+    const per = L.cols * L.rows;
+
+    students.forEach((st, i) => {
+      if (i > 0 && i % per === 0) doc.addPage();
+      const k = i % per, col = k % L.cols, row = Math.floor(k / L.cols);
+      drawSticker(doc,
+        PAGE.mx + col * (sw + L.gapX), PAGE.top + row * (sh + L.gapY), sw, sh,
+        { name: st.name, user: st.user, pass: st.pass, section: st.section, gradeText: gradeTextCarnet, url: A.url }, A);
+    });
+
+    const endPage = doc.getNumberOfPages();
+    const pagesForGrade = endPage - startPage + 1;
+
+    // Rótulo discreto en el margen superior de la primera hoja del grado
+    if (labelTop) {
+      doc.setPage(startPage);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); txt(doc, [185, 195, 210]);
+      doc.text(clean(labelTop), PAGE.mx, 5.2, { baseline: 'middle' });
+    }
+
+    // Pies de página por grado
+    for (let p = startPage; p <= endPage; p++) {
+      doc.setPage(p);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); txt(doc, [150, 160, 174]);
+      doc.text(
+        clean(`${A.nombre}  ·  ${gradeTextFooter}  ·  ${p - startPage + 1}/${pagesForGrade}`),
+        PAGE.w / 2, PAGE.h - 6, { align: 'center' }
+      );
+    }
+  }
+
+  /**
    * Crea un PDF (tamaño carta) con los carnets de un año/grado (o de una sola sección).
    * students: [{name,user,pass,section}]
    * opts: { academiaId, lang, level, grade, layout, url, sectionText }
@@ -153,27 +195,41 @@
     const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
     doc.setProperties({ title: `${A.nombre} · ${gradeLabel(lang, opts.level, opts.grade)}` });
 
-    const usableW = PAGE.w - 2 * PAGE.mx, usableH = PAGE.h - PAGE.top - PAGE.bottom;
-    const sw = (usableW - (L.cols - 1) * L.gapX) / L.cols;
-    const sh = (usableH - (L.rows - 1) * L.gapY) / L.rows;
-    const per = L.cols * L.rows, pages = Math.ceil(students.length / per);
-    const gLabel = gradeLabel(lang, opts.level, opts.grade) + (opts.sectionText ? '  ·  ' + opts.sectionText : '');
-
-    students.forEach((st, i) => {
-      if (i > 0 && i % per === 0) doc.addPage();
-      const k = i % per, col = k % L.cols, row = Math.floor(k / L.cols);
-      drawSticker(doc,
-        PAGE.mx + col * (sw + L.gapX), PAGE.top + row * (sh + L.gapY), sw, sh,
-        { name: st.name, user: st.user, pass: st.pass, section: st.section, gradeText: gradeLabel(lang, opts.level, opts.grade), url: A.url }, A);
-    });
-
-    for (let p = 1; p <= pages; p++) {
-      doc.setPage(p);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); txt(doc, [150, 160, 174]);
-      doc.text(clean(`${A.nombre}  ·  ${gLabel}  ·  ${p}/${pages}`), PAGE.w / 2, PAGE.h - 6, { align: 'center' });
-    }
+    const gradeTextCarnet = gradeLabel(lang, opts.level, opts.grade);
+    const gradeTextFooter = gradeTextCarnet + (opts.sectionText ? '  ·  ' + opts.sectionText : '');
+    _dibujarGradoEnDoc(doc, students, A, L, gradeTextCarnet, gradeTextFooter, null);
     return doc;
   }
 
-  window.CarnetsPDF = { buildPDF, gradeLabel, academias: CN_ACADEMIAS, levels: LEVELS, layouts: LAYOUTS };
+  /**
+   * Crea un PDF único con los carnets de varios grados (un grado por bloque de páginas).
+   * grades: [{nivel, grado, students:[{name,user,pass,section}], labelTop?}]
+   * opts: { academiaId, lang, layout, url, titulo? }
+   * Cada grado empieza en una hoja nueva. Si labelTop tiene texto, se imprime como
+   * rótulo pequeño en el margen superior de la primera hoja de ese grado.
+   */
+  function buildPDFMultiGrade(grades, opts) {
+    const { jsPDF } = window.jspdf;
+    const base = CN_ACADEMIAS[opts.academiaId] || CN_ACADEMIAS.tecno;
+    const A = Object.assign({}, base, { url: opts.url || 'cursoscleveland.com' });
+    const lang = opts.lang || 'es';
+    const L = LAYOUTS[opts.layout] || LAYOUTS.big;
+    const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
+    doc.setProperties({ title: clean(`${A.nombre} · ${opts.titulo || ''}`) });
+
+    let primerGrado = true;
+    grades.forEach(g => {
+      if (!g.students || !g.students.length) return;
+      if (!primerGrado) doc.addPage();
+      const paginaInicio = doc.getNumberOfPages();
+      // Marcador PDF para navegación
+      try { if (doc.outline && doc.outline.add) doc.outline.add(null, clean(gradeLabel('es', g.nivel, g.grado)), { pageNumber: paginaInicio }); } catch (_) {}
+      const gradeText = gradeLabel(lang, g.nivel, g.grado);
+      _dibujarGradoEnDoc(doc, g.students, A, L, gradeText, gradeText, g.labelTop || null);
+      primerGrado = false;
+    });
+    return doc;
+  }
+
+  window.CarnetsPDF = { buildPDF, buildPDFMultiGrade, gradeLabel, academias: CN_ACADEMIAS, levels: LEVELS, layouts: LAYOUTS };
 })();

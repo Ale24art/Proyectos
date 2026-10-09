@@ -2,6 +2,7 @@
 
 **Fecha de verificación:** 2026-10-06
 **Commit base (v5):** `2759783` — árbol limpio al comienzo de esta versión del documento.
+**Cambios en árbol de trabajo (2026-10-09, pendientes de commit):** exportaciones PDF/XLSX de participantes y correcciones de contenido (sin conteos, sin resumen, sin nombre de academia en PDF individual). Ver secciones "Cambios — 2026-10-09" abajo.
 **Cambios en árbol de trabajo (2026-10-06, pendientes de commit):** habilitar "Importar CSV" para Cleveland con carga fiel (`importarCSVConservarDatos`). Ver sección "Cambios — 2026-10-06" abajo.
 **Commit base de la v4:** `be0f135`. Entre esos dos puntos se aplicaron y confirmaron tres commits:
 - `7479d08` — Generador: acordeones + eliminar estudiante; Colegios: paginación; fix Buscar; Papelera ampliada.
@@ -38,6 +39,143 @@ Los archivos `INSTRUCCION.md`, `INSTRUCCION_claude_code_generar_documentacion.md
 - Bug de `onSearchInput` (`display:''` vs `display:'block'`) — **resuelto en `7479d08`**.
 - `guardarListaUsuarios` descartaba la versión anterior — **resuelto en `7479d08`** (ahora va a Papelera).
 - `resetCatalogs` descartaba colegios/cursos — **resuelto en `7479d08`** (ahora van a Papelera).
+
+---
+
+## Cambios — 2026-10-09b (pendientes de commit)
+
+### Correcciones de contenido en exportaciones de participantes
+
+**Archivos modificados:** `script.js` (v8→v9), `index.html` (versión actualizada).
+
+**Funciones afectadas:** `descargarNivelPDF`, `descargarNivelXLSX`, `descargarPDFParticipantesColegio`. Las exportaciones de carnets no se tocaron.
+
+#### A · PDF de nivel (`descargarNivelPDF`)
+- **Título por año/grado:** `"1er Año · Educación Media · Alejandro Humboldt"` (sin cantidad de estudiantes).
+- **Línea de cierre:** `"Fin de 1er Año"` (sin total).
+- **Página de resumen eliminada.** El documento termina tras la línea de cierre del último año/grado. Se eliminó también la variable `totales` que solo la usaba.
+- La numeración `"Página X de Y"` se mantiene.
+
+#### B · XLSX de nivel (`descargarNivelXLSX`)
+- **Fila banda:** `"1er Año · Educación Media · Alejandro Humboldt"` (sin cantidad).
+- **Fila de cierre:** `"Fin de 1er Año"` (antes era `"Total 1er Año: N"`).
+- **Eliminada** la fila `"TOTAL GENERAL: N"` al final del archivo.
+- Se conservan la fila de encabezados de columna bajo cada banda, la fila de cierre y la fila en blanco separadora.
+
+#### C · PDF individual por año/grado (`descargarPDFParticipantesColegio`)
+El encabezado del documento ahora muestra **solo**:
+- Nombre del colegio (11pt).
+- Nivel · Año/Grado (· Grupo, si aplica) (10pt bold).
+- Línea separadora.
+
+Se eliminaron del encabezado: nombre de la academia, fecha de generación y total de estudiantes.
+
+#### D · Caracteres seguros para jsPDF
+- Los fallback `{ nombre: '—' }` (U+2014, em dash, >255 → imprimiría `?`) se reemplazaron por `{ nombre: '-' }` en las dos funciones de nivel.
+- Todos los separadores visibles usan `·` (U+00B7 = 183, Latin-1 seguro).
+- La cadena `"Resumen — …"` del bloque eliminado ya no existe.
+
+---
+
+## Cambios — 2026-10-09 (pendientes de commit)
+
+### Exportaciones PDF/XLSX de participantes (4 funciones)
+
+**Archivos modificados:** `script.js` (v7→v8), `carnets-pdf.js` (v1→v2), `carnets.js` (v2→v3), `index.html` (versiones actualizadas).
+
+**Sin bibliotecas nuevas.** jsPDF (ya incluido como `lib/jspdf.umd.min.js`) se usa para los nuevos PDFs dibujando la tabla manualmente. SheetJS CE (ya incluido como `lib/xlsx.full.min.js`) se usa para los nuevos XLSX.
+
+---
+
+#### Función 1 — PDF de la lista de participantes seleccionada (`script.js`)
+
+Se agrega el botón **"⬇ Descargar PDF"** junto al "⬇ Descargar XLSX" en `#cd-part-actions`.
+
+**Función:** `descargarPDFParticipantesColegio(btn)` — exporta exactamente los mismos participantes que el XLSX (mismo filtro de año/grupo, sin búsqueda ni paginación), en el mismo orden (por `username`). Columnas: usuario, clave, nombres, apellidos.
+
+**Diseño del PDF:** encabezado con academia, colegio, nivel · año/grado (· Grupo si aplica), fecha de generación y total de estudiantes; separador; cabecera de tabla (fondo azul claro, bold) repetida en cada página nueva; filas alternadas; texto largo con `doc.splitTextToSize` (sin cortar); tildes y Ñ correctas (todos los caracteres ≤255 pasan directo a jsPDF Latin-1); "Página X de Y" al pie.
+
+**Nombre del archivo:** `nombreArchivoDescarga(anio, grupo, 'pdf')` — mismo patrón que el XLSX ya existente, solo cambia la extensión. Ejemplo: `'1er año.pdf'`, `'3er grado A.pdf'`.
+
+**Indicador de progreso:** botón se deshabilita con texto "Generando PDF…" durante la generación (via `setTimeout`).
+
+---
+
+#### Función 2 — Descarga completa de un nivel (`script.js`)
+
+Se agrega el bloque `#cd-nivel-download-block` (con `border-top` separador, `display:none` inicial) debajo de `#cd-part-actions` en la tarjeta Participantes. Contiene un `<select id="cd-nivel-select">` y los botones `#cd-nivel-btn-xlsx` y `#cd-nivel-btn-pdf`.
+
+`renderCollegeParticipantes` llama a `_actualizarNivelDownloadBlock(colegioId)` que popula el selector solo con los niveles que tengan participantes en ese colegio. Si ningún nivel tiene participantes, el bloque permanece oculto. Si hay exactamente un nivel, queda pre-seleccionado implícitamente al elegir.
+
+**Funciones nuevas:**
+- `_actualizarNivelDownloadBlock(colegioId)` — pura UI, no toca `data`.
+- `onCdNivelChange()` — habilita/deshabilita botones según selección.
+- `descargarNivelXLSXClick()` / `descargarNivelPDFClick(btn)` — leen el `<select>` y delegan.
+- `descargarNivelXLSX(nivel)` — genera el XLSX de todos los años del nivel en orden ascendente (1er→5to o 1er→6to). Omite años sin participantes.
+- `descargarNivelPDF(nivel, btn)` — genera el PDF de todos los años del nivel. Cada año empieza en página nueva con un título destacado (banda azul); encabezado de tabla repetido en cada página; línea de cierre al final del último bloque de cada año; última página con resumen de totales por año y total general; marcadores PDF por año y sección "Resumen" si `doc.outline` está disponible.
+
+**XLSX por nivel:** una sola hoja (`Estudiantes Media` / `Estudiantes Primaria`). Antes de cada año: fila banda con `"1er Año · N estudiantes"` + fila de encabezados de columna. Después del último registro: fila `"Total 1er Año: N"` + fila en blanco. Al final: `"TOTAL GENERAL: N"`. Ajuste de anchos de columna (`!cols`). **Nota:** SheetJS CE no soporta estilos de celda (negrita, fondo) — las filas banda son texto plano sin resaltado visual. Esto es consistente con el XLSX ya existente (tampoco usa estilos).
+
+**Nombres de archivo:**
+| Botón | Archivo |
+|---|---|
+| Media, XLSX | `Estudiantes Media.xlsx` |
+| Media, PDF | `Estudiantes Media.pdf` |
+| Primaria, XLSX | `Estudiantes Primaria.xlsx` |
+| Primaria, PDF | `Estudiantes Primaria.pdf` |
+
+El nombre del colegio y la academia aparecen dentro del archivo (encabezado del PDF, filas de título de sección en el XLSX).
+
+---
+
+#### Función 3 — PDF único de nivel en Generador de carnets (`carnets.js` + `index.html`)
+
+Se agregan dos botones en la tarjeta "Carnets generados" (Modo 2 — Desde participantes):
+- `#cn-pbtn-media-pdf` — "Descargar todos los carnets de Educación Media (PDF único)"
+- `#cn-pbtn-primaria-pdf` — "Descargar todos los carnets de Educación Primaria (PDF único)"
+
+Visibilidad: controlada por `_renderNivelPDFBotones()`, llamada al generar carnets, al cambiar de colegio y al llamar a `render()`.
+
+**Función:** `descargarNivelCarnetsPDF(nivel, btn)` — filtra `pResultLists` por nivel, agrupa por grado en orden ascendente, llama a `window.CarnetsPDF.buildPDFMultiGrade(grades, opts)` (nuevo, ver abajo). Nombre del archivo: `Carnets Media.pdf` o `Carnets Primaria.pdf`. Muestra "Generando PDF…" y deshabilita el botón durante la generación. Maneja errores con toast en español.
+
+**El botón "Descargar todos los grados (.zip)" sigue existiendo** y no cambia de comportamiento.
+
+**`carnets-pdf.js` — `buildPDFMultiGrade`:**
+Nueva función `buildPDFMultiGrade(grades, opts)` que:
+- `grades: [{nivel, grado, students:[{name,user,pass,section}], labelTop?}]`
+- Crea un jsPDF carta, itera los grados en orden.
+- Cada grado (excepto el primero) comienza con `doc.addPage()`.
+- Reutiliza el helper interno `_dibujarGradoEnDoc(doc, students, A, L, gradeTextCarnet, gradeTextFooter, labelTop)` — sin duplicar la lógica de `drawSticker`.
+- `labelTop`: rótulo discreto (7pt gris) en el margen superior de la primera hoja del grado (ej. `"1er Año · 14 carnets"`). El margen superior libre es 9mm (`PAGE.top`); el rótulo va a y=5.2mm. Si `labelTop` es `null` o vacío, no se imprime.
+- Marcadores PDF por grado (si `doc.outline.add` disponible).
+- Footers por grado: `"academia · grado · p/total_del_grado"`.
+
+El motor `buildPDF` original fue refactorizado para usar `_dibujarGradoEnDoc` — sin cambio de comportamiento externo.
+
+---
+
+#### Función 4 — Nuevos nombres para PDFs de carnets por año/grado (`carnets.js`)
+
+**Función auxiliar nueva:** `_nombrePDFGrado(nivel, grado, seccion)` — devuelve el nombre del archivo:
+- Sin sección: `gradeLabel('es', nivel, grado).toLocaleLowerCase('es') + '.pdf'` → `"1er año.pdf"`, `"2do grado.pdf"`, etc.
+- Con sección: `"1er año - Sección A.pdf"`.
+
+**Se aplica a:**
+- `gradeJob()` — botón "Descargar PDF del grado" (ambos modos).
+- `listJob()` — botón "PDF" por sección/lista (ambos modos).
+- `downloadZip()` interno — nombres de archivos dentro del `.zip` (ambos modos).
+
+**Nombre del ZIP:** sin cambios. Tecno: `Carnets_tecnocleveland.zip`. Cleveland: `ID-Cards_cleveland-english-institute.zip`.
+
+**PDFs con varias secciones en un mismo grado:** `listJob` genera `"1er año - Sección A.pdf"`, `"1er año - Sección B.pdf"`, etc. Sin colisión.
+
+**Modo 1 y Modo 2:** ambos usan `gradeJob`/`listJob`, por lo que ambos reciben los nuevos nombres automáticamente.
+
+**Nota sobre la ñ y espacios en el nombre de descarga:** `a.download = filename` en navegadores modernos soporta UTF-8 incluyendo ñ y espacios. El comportamiento puede variar en navegadores muy antiguos.
+
+---
+
+**Secciones actualizadas:** §2 (versiones `?v=`), §6.7 (PDF de participantes + descarga por nivel), §7.3/§7.4/§7.5 (PDF único de nivel + nuevos nombres), §11 (riesgos nuevos).
 
 ---
 
@@ -217,7 +355,7 @@ academias.js?v=2  →  sync-core.js?v=1  →  sync.js?v=1
 ```
 `script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes que todo. `sync.js` también lee `ACADEMIA_ACTUAL` (para `STORAGE_KEY`/`ACADEMIA_ID`) y `SyncCore` (de `sync-core.js`), por eso va justo después. Los tres `<script>` del SDK de Firebase llevan `onerror` inline que solo deja un `console.info` — si no cargan (sin internet, bloqueados), el resto de la carga continúa sin lanzar errores. `firebase-config.js` y `sync-firebase.js` comprueban `typeof firebase !== 'undefined'` antes de usarlo; si no está, no registran ningún adaptador y `window.Sync` queda en modo solo local (ver §9a). `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting (estado actual):** `script.js?v=7`, `academias.js?v=2`, `styles.css?v=5`, `carnets.js?v=2`, `carnets-pdf.js?v=1`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
+**Cache-busting (estado actual):** `script.js?v=9`, `academias.js?v=2`, `styles.css?v=5`, `carnets.js?v=3`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propio login, su propio `script.js`, y un `firebase-config.js` (ese proyecto sí usa o usó Firebase real). No comparte nada de código con `Organizador_moodle/`.
 
@@ -619,6 +757,8 @@ Tarjeta de Participantes en la vista Colegios (`renderCollegeParticipantes`, `re
 - "Mostrando X–Y de Z" bajo la paginación.
 - El estado de página se resetea a 1 cada vez que cambia año, grupo o búsqueda.
 - **Descarga XLSX** (`descargarXLSXParticipantesColegio`): exporta **toda** la selección de año/grupo sin paginar ni filtrar por búsqueda. Nombre de archivo generado por `nombreArchivoDescarga(anio, grupo, 'xlsx')`.
+- **Descarga PDF** (`descargarPDFParticipantesColegio`): exporta los mismos participantes del XLSX, en el mismo orden y columnas, con encabezado de documento, tabla repetida por página y numeración "Página X de Y". Nombre: `nombreArchivoDescarga(anio, grupo, 'pdf')`.
+- **Descarga todo el nivel** (`descargarNivelXLSX` / `descargarNivelPDF`): un selector aparece en el bloque `#cd-nivel-download-block` con los niveles que tengan participantes en el colegio. Nombres de archivo fijos: `Estudiantes Media.xlsx/.pdf`, `Estudiantes Primaria.xlsx/.pdf`. Ver §2 "Cambios 2026-10-09" para estructura completa.
 - Copiar al portapapeles por fila (formato: `"Estudiante: nombres apellidos\nUSUARIO: ...\nCLAVE: ..."`).
 
 ### 6.8 Sistema de acordeón reutilizable
@@ -810,6 +950,12 @@ Hasta el commit `1ff425c`, `deleteManualList()` y "Eliminar todas las listas" qu
 - `login.html` solo verifica `tcUser` para la redirección directa; `index.html` verifica tanto `tcUser` como `tcAcademia`. El guardia de `index.html` cubre el caso de sesión incompleta.
 - Los archivos de `lib/` y `login.html` no llevan parámetro `?v=` de cache-busting (inconsistencia conocida pero no crítica).
 - `LEEME.txt` no menciona el Generador de usuarios, la paginación de Participantes, ni la Papelera ampliada. Solo describe el flujo original de colegios y carnets.
+
+### 11.9 Riesgos de las exportaciones por nivel (2026-10-09)
+- **Nombres de archivo sin colegio (Función 2 y 3):** `Estudiantes Media.pdf`, `Carnets Media.pdf`, etc. no incluyen el nombre del colegio. Si el usuario descarga el mismo nivel desde dos colegios distintos, los archivos se sobreescriben en la carpeta de Descargas sin aviso. El nombre del colegio sí aparece **dentro** del PDF (encabezado/título de sección) para poder identificarlo. Decisión aceptada a pedido explícito; se recomienda que el usuario renombre los archivos si necesita archivarlos.
+- **ZIP de carnets por nivel (Función 3):** los nuevos botones de PDF único no reemplazan el ZIP; conviven. Los nombres de archivos dentro del ZIP (ya actualizados por Función 4) coinciden con los que generaría descargar cada grado por separado. Si se abren ambos, no hay colisión.
+- **XLSX sin estilos de celda:** SheetJS CE no soporta `CellStyle`; las filas banda y de cierre son texto plano sin negrita ni color de fondo. Solo los anchos de columna (`!cols`) se aplican.
+- **`buildPDFMultiGrade` y `stickers/`:** `stickers/js/stickers.js` no fue modificado y no tiene `buildPDFMultiGrade`. Si `stickers/` se usa de forma independiente, no tiene acceso al PDF único por nivel — coherente con la separación histórica (ver §11.1).
 
 ### 11.4 Decisiones heredadas de instrucciones anteriores, confirmadas vigentes en el código
 - Interfaz en español para ambas academias (`idiomaUI: 'es'`); solo el contenido *impreso* de los carnets de Cleveland sale en inglés.

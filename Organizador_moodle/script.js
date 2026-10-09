@@ -1821,6 +1821,7 @@ function renderCollegeParticipantes(colegioId) {
     document.getElementById('cd-part-count-label').textContent = '';
     document.getElementById('cd-part-title').textContent = '';
     empty.style.display = '';
+    _actualizarNivelDownloadBlock(colegioId);
     return;
   }
   wrap.style.display = '';
@@ -1846,6 +1847,7 @@ function renderCollegeParticipantes(colegioId) {
   document.getElementById('cd-part-search').value = '';
   cdPartPage = 1;
 
+  _actualizarNivelDownloadBlock(colegioId);
   onCdPartAnioChange();
 }
 
@@ -1973,6 +1975,244 @@ function descargarXLSXParticipantesColegio() {
 /* ════════════════════════════════════════════════════════════
    BUSCAR
    ════════════════════════════════════════════════════════════ */
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 PDF DE PARTICIPANTES \u2014 utilidades internas \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+
+function _pdfClean(s) {
+  return String(s == null ? '' : s).split('').map(ch => {
+    if (ch.charCodeAt(0) <= 255) return ch;
+    const b = ch.normalize('NFD')[0];
+    return b && b.charCodeAt(0) <= 255 ? b : '?';
+  }).join('');
+}
+
+function _pdfBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+const _PDFP = {
+  w: 215.9, h: 279.4,
+  mL: 15, mR: 15, mT: 15, mB: 20,
+  cW: 185.9,
+  cols: [
+    { label: 'Usuario',   w: 40   },
+    { label: 'Clave',     w: 25   },
+    { label: 'Nombres',   w: 60   },
+    { label: 'Apellidos', w: 60.9 }
+  ],
+  rowH: 6.5, lineH: 5.5, hdrH: 8, fSz: 9, hdrFSz: 9
+};
+(function () { let x = _PDFP.mL; _PDFP.cols.forEach(c => { c.x = x; x += c.w; }); }());
+
+function _pdfRowLines(doc, row) {
+  doc.setFontSize(_PDFP.fSz);
+  return row.map((v, i) => doc.splitTextToSize(_pdfClean(String(v || '')), _PDFP.cols[i].w - 3).length);
+}
+function _pdfRowH(lc) { const m = Math.max(...lc); return m <= 1 ? _PDFP.rowH : m * _PDFP.lineH + 2; }
+
+function _pdfDrawColHeaders(doc, y) {
+  const { mL, cW, cols, hdrH } = _PDFP;
+  doc.setFillColor(230, 237, 250); doc.rect(mL, y, cW, hdrH, 'F');
+  doc.setDrawColor(180, 195, 220); doc.setLineWidth(0.3);
+  doc.line(mL, y + hdrH, mL + cW, y + hdrH);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(_PDFP.hdrFSz); doc.setTextColor(30, 55, 110);
+  cols.forEach(c => doc.text(_pdfClean(c.label), c.x + 2, y + hdrH / 2, { baseline: 'middle' }));
+  return y + hdrH;
+}
+
+function _pdfDrawRow(doc, y, row, rh, isAlt) {
+  const { mL, cW, cols } = _PDFP;
+  if (isAlt) { doc.setFillColor(248, 250, 254); doc.rect(mL, y, cW, rh, 'F'); }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(_PDFP.fSz); doc.setTextColor(25, 35, 50);
+  row.forEach((v, i) => {
+    const lines = doc.splitTextToSize(_pdfClean(String(v || '')), cols[i].w - 3);
+    const lh = rh / Math.max(lines.length, 1);
+    lines.forEach((l, li) => doc.text(l, cols[i].x + 2, y + li * lh + lh / 2, { baseline: 'middle' }));
+  });
+  doc.setDrawColor(215, 222, 235); doc.setLineWidth(0.15);
+  doc.line(mL, y + rh, mL + cW, y + rh);
+}
+
+function _pdfDrawTable(doc, rows, y0, bottomLimit) {
+  let y = y0;
+  rows.forEach((row, idx) => {
+    const lc = _pdfRowLines(doc, row);
+    const rh = _pdfRowH(lc);
+    if (y + rh > bottomLimit) { doc.addPage(); y = _PDFP.mT; y = _pdfDrawColHeaders(doc, y); }
+    _pdfDrawRow(doc, y, row, rh, idx % 2 !== 0);
+    y += rh;
+  });
+  return y;
+}
+
+function _pdfPageFooter(doc, page, total) {
+  const { w, h, mB } = _PDFP;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150, 162, 178);
+  doc.text(_pdfClean(`P\u00e1gina ${page} de ${total}`), w / 2, h - mB / 2, { align: 'center', baseline: 'middle' });
+}
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 FUNCI\u00d3N 1 \u2014 PDF por a\u00f1o/grado individual \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+function descargarPDFParticipantesColegio(btn) {
+  if (!currentCollegeId) return;
+  if (!window.jspdf || !window.jspdf.jsPDF) { showToast('\u26a0 Falta la librer\u00eda jsPDF (lib/jspdf.umd.min.js)'); return; }
+  const { anio, grupo } = cdPartSeleccion();
+  const rows = data.participantes
+    .filter(p => p.colegioId === currentCollegeId && p.anio === anio && (grupo === '' || (p.group1 || '') === grupo))
+    .sort((a, b) => a.username.localeCompare(b.username));
+  if (!rows.length) return;
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Generando PDF\u2026'; }
+  setTimeout(() => {
+    try {
+      const col   = data.colegios.find(c => c.id === currentCollegeId) || { nombre: '-' };
+      const nivel = rows[0].nivel === 'media' ? 'Educaci\u00f3n Media' : 'Educaci\u00f3n Primaria';
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
+      doc.setProperties({ title: _pdfClean(`${col.nombre} \u00b7 ${anio}`) });
+      const { mL, mT, mB, w, h, cW } = _PDFP;
+      const bottomLimit = h - mB - 5;
+      let y = mT;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(40, 55, 80);
+      doc.text(_pdfClean(col.nombre), mL, y + 5.5, { baseline: 'middle' }); y += 8;
+      const tituloAnio = [nivel, anio, grupo ? `Grupo ${grupo}` : null].filter(Boolean).join(' \u00b7 ');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(50, 80, 150);
+      doc.text(_pdfClean(tituloAnio), mL, y + 5, { baseline: 'middle' }); y += 7.5;
+      doc.setDrawColor(180, 195, 222); doc.setLineWidth(0.4);
+      doc.line(mL, y, w - mL, y); y += 5;
+      y = _pdfDrawColHeaders(doc, y);
+      _pdfDrawTable(doc, rows.map(p => [p.username, p.password, p.nombres, p.apellidos]), y, bottomLimit);
+      const total = doc.getNumberOfPages();
+      for (let p = 1; p <= total; p++) { doc.setPage(p); _pdfPageFooter(doc, p, total); }
+      _pdfBlob(doc.output('blob'), nombreArchivoDescarga(anio, grupo, 'pdf'));
+      showToast('PDF descargado \u2713');
+    } catch (e) { console.error(e); showToast('\u26a0 Error al generar el PDF'); }
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }, 30);
+}
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 FUNCI\u00d3N 2 \u2014 Descarga completa de un nivel \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+function _actualizarNivelDownloadBlock(colegioId) {
+  const block = document.getElementById('cd-nivel-download-block');
+  const sel   = document.getElementById('cd-nivel-select');
+  const btnXlsx = document.getElementById('cd-nivel-btn-xlsx');
+  const btnPdf  = document.getElementById('cd-nivel-btn-pdf');
+  if (!block || !sel) return;
+  const mine        = data.participantes.filter(p => p.colegioId === colegioId);
+  const hasMedia    = mine.some(p => p.nivel === 'media');
+  const hasPrimaria = mine.some(p => p.nivel === 'primaria');
+  if (!hasMedia && !hasPrimaria) { block.style.display = 'none'; return; }
+  block.style.display = '';
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Elige un nivel\u2026</option>';
+  if (hasMedia)    sel.innerHTML += '<option value="media">\ud83c\udf93 Educaci\u00f3n Media</option>';
+  if (hasPrimaria) sel.innerHTML += '<option value="primaria">\ud83e\uddd2 Educaci\u00f3n Primaria</option>';
+  if ((prev === 'media' && hasMedia) || (prev === 'primaria' && hasPrimaria)) sel.value = prev;
+  const noSel = !sel.value;
+  if (btnXlsx) btnXlsx.disabled = noSel;
+  if (btnPdf)  btnPdf.disabled  = noSel;
+}
+
+function onCdNivelChange() {
+  const sel = document.getElementById('cd-nivel-select');
+  const noSel = !(sel && sel.value);
+  const btnXlsx = document.getElementById('cd-nivel-btn-xlsx');
+  const btnPdf  = document.getElementById('cd-nivel-btn-pdf');
+  if (btnXlsx) btnXlsx.disabled = noSel;
+  if (btnPdf)  btnPdf.disabled  = noSel;
+}
+
+function descargarNivelXLSXClick() {
+  const sel = document.getElementById('cd-nivel-select');
+  if (!sel || !sel.value) return;
+  descargarNivelXLSX(sel.value);
+}
+
+function descargarNivelPDFClick(btn) {
+  const sel = document.getElementById('cd-nivel-select');
+  if (!sel || !sel.value) return;
+  descargarNivelPDF(sel.value, btn);
+}
+
+function descargarNivelXLSX(nivel) {
+  if (!currentCollegeId) return;
+  if (typeof XLSX === 'undefined') { showToast('\u26a0 Falta la librer\u00eda XLSX'); return; }
+  const col      = data.colegios.find(c => c.id === currentCollegeId) || { nombre: '-' };
+  const nivelTxt = nivel === 'media' ? 'Educaci\u00f3n Media' : 'Educaci\u00f3n Primaria';
+  const mine  = data.participantes.filter(p => p.colegioId === currentCollegeId && p.nivel === nivel);
+  const anios = [...new Set(mine.map(p => p.anio))].sort((a, b) => extractAnioNum(a) - extractAnioNum(b));
+  if (!anios.length) { showToast('Sin participantes en este nivel.'); return; }
+  const COLS = ['usuario', 'clave', 'nombres', 'apellidos'];
+  const aoa  = [];
+  anios.forEach(anio => {
+    const filas = mine.filter(p => p.anio === anio).sort((a, b) => a.username.localeCompare(b.username));
+    if (!filas.length) return;
+    aoa.push([`${anio} \u00b7 ${nivelTxt} \u00b7 ${col.nombre}`, '', '', '']);
+    aoa.push([...COLS]);
+    filas.forEach(p => aoa.push([p.username, p.password, p.nombres, p.apellidos]));
+    aoa.push([`Fin de ${anio}`, '', '', '']);
+    aoa.push(['', '', '', '']);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 28 }, { wch: 28 }];
+  const wb = XLSX.utils.book_new();
+  const sheetName = nivel === 'media' ? 'Estudiantes Media' : 'Estudiantes Primaria';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, nivel === 'media' ? 'Estudiantes Media.xlsx' : 'Estudiantes Primaria.xlsx');
+  showToast('XLSX descargado \u2713');
+}
+
+function descargarNivelPDF(nivel, btn) {
+  if (!currentCollegeId) return;
+  if (!window.jspdf || !window.jspdf.jsPDF) { showToast('\u26a0 Falta la librer\u00eda jsPDF'); return; }
+  const mine  = data.participantes.filter(p => p.colegioId === currentCollegeId && p.nivel === nivel);
+  const anios = [...new Set(mine.map(p => p.anio))].sort((a, b) => extractAnioNum(a) - extractAnioNum(b));
+  if (!anios.length) { showToast('Sin participantes en este nivel.'); return; }
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Generando PDF\u2026'; }
+  setTimeout(() => {
+    try {
+      const col      = data.colegios.find(c => c.id === currentCollegeId) || { nombre: '-' };
+      const nivelTxt = nivel === 'media' ? 'Educaci\u00f3n Media' : 'Educaci\u00f3n Primaria';
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
+      doc.setProperties({ title: _pdfClean(`${nivelTxt} \u00b7 ${col.nombre}`) });
+      const { mL, mT, mB, w, h, cW } = _PDFP;
+      const bottomLimit = h - mB - 5;
+      let primerAnio = true;
+      anios.forEach(anio => {
+        const filas = mine.filter(p => p.anio === anio).sort((a, b) => a.username.localeCompare(b.username));
+        if (!filas.length) return;
+        if (!primerAnio) doc.addPage();
+        const paginaInicio = doc.getNumberOfPages();
+        try { if (doc.outline && doc.outline.add) doc.outline.add(null, _pdfClean(anio), { pageNumber: paginaInicio }); } catch (_) {}
+        let y = mT;
+        doc.setFillColor(50, 90, 170); doc.rect(mL, y, cW, 10, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+        doc.text(_pdfClean(`${anio} \u00b7 ${nivelTxt} \u00b7 ${col.nombre}`), mL + 3, y + 5, { baseline: 'middle' });
+        y += 13;
+        y = _pdfDrawColHeaders(doc, y);
+        y = _pdfDrawTable(doc, filas.map(p => [p.username, p.password, p.nombres, p.apellidos]), y, bottomLimit);
+        y += 2;
+        if (y + 8 > bottomLimit) { doc.addPage(); y = mT; }
+        doc.setDrawColor(100, 130, 200); doc.setLineWidth(0.35);
+        doc.line(mL, y, mL + cW, y); y += 3;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(60, 90, 160);
+        doc.text(_pdfClean(`Fin de ${anio}`), mL, y + 4, { baseline: 'middle' });
+        primerAnio = false;
+      });
+      const totalPags = doc.getNumberOfPages();
+      for (let p = 1; p <= totalPags; p++) { doc.setPage(p); _pdfPageFooter(doc, p, totalPags); }
+      _pdfBlob(doc.output('blob'), nivel === 'media' ? 'Estudiantes Media.pdf' : 'Estudiantes Primaria.pdf');
+      showToast('PDF descargado \u2713');
+    } catch (e) { console.error(e); showToast('\u26a0 Error al generar el PDF'); }
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }, 30);
+}
+
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
 function normalize(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
