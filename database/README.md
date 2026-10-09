@@ -75,6 +75,7 @@ el resultado de `SELECT * FROM v_moodle_upload` con el cliente que uses
 node database/scripts/test_idavuelta.js
 node database/scripts/test_sync_core.js
 node database/scripts/test_sync_dos_dispositivos.js
+node database/scripts/test_agregar_estudiantes.js
 ```
 
 ## Decisiones del esquema que conviene conocer
@@ -95,6 +96,7 @@ node database/scripts/test_sync_dos_dispositivos.js
   `trash.carnetListas`, que sí la llevan). Los scripts usan la fecha de
   exportación del respaldo (`_exportadoEn`) como aproximación. Esto es una
   limitación del formato de origen, no de este esquema.
+- **`agregado_en`** (columna opcional en `participantes`): `NULL` = participante generado en la creación de la lista; no `NULL` = añadido posteriormente mediante el "modo agregar" de la app. El valor es una cadena ISO 8601 (igual que en el campo `agregadoEn` del respaldo JSON). No requiere migración de datos existentes; los registros sin este campo en la app simplemente no producen ningún valor en esta columna al importar. Al exportar de SQL a respaldo JSON (`sql_a_respaldo.js`), si `agregado_en` es `NULL`, el campo `agregadoEn` se omite del objeto participante (retrocompatible con respaldos antiguos).
 - **`tipo_papelera`** distingue si un participante en la Papelera llegó ahí
   como parte de una **lista completa** (`'lote'`, equivalente a
   `trash.participantes` en la app — varias filas comparten el mismo

@@ -50,6 +50,7 @@ function datosAFilas(payload) {
     course1: p.course1, group1: p.group1 || '', role1: p.role1 || 'student',
     enrolperiod1: p.enrolperiod1 || '365d', suspended: p.suspended || '0',
     nombres: p.nombres, apellidos: p.apellidos, fecha: p.fecha,
+    agregado_en: p.agregadoEn || null,
     eliminado_en, lote_baja, tipo_papelera, orden
   });
 
@@ -105,12 +106,16 @@ function filasADatos(filas, academiaId) {
     nombreCompleto: a.nombre_completo, nombreCorto: a.nombre_corto,
     clases: Number(a.clases) || 0, notas: a.notas || ''
   });
-  const participante = p => ({
-    id: p.id, colegioId: p.colegio_id, cursoId: p.curso_id, anio: p.anio, nivel: p.nivel,
-    username: p.username, password: p.password, nombres: p.nombres, apellidos: p.apellidos,
-    email: p.email, city: p.city, country: p.country, course1: p.course1, group1: p.group1 || '',
-    role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended, fecha: p.fecha
-  });
+  const participante = p => {
+    const obj = {
+      id: p.id, colegioId: p.colegio_id, cursoId: p.curso_id, anio: p.anio, nivel: p.nivel,
+      username: p.username, password: p.password, nombres: p.nombres, apellidos: p.apellidos,
+      email: p.email, city: p.city, country: p.country, course1: p.course1, group1: p.group1 || '',
+      role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended, fecha: p.fecha
+    };
+    if (p.agregado_en) obj.agregadoEn = p.agregado_en instanceof Date ? p.agregado_en.toISOString() : p.agregado_en;
+    return obj;
+  };
 
   const partActivos = porOrden(filas.participantes.filter(p => !p.eliminado_en)).map(participante);
 

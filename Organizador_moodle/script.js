@@ -62,6 +62,8 @@ let genPreviewRows = [];
 let genPreviewCtx = null;
 let genPreviewSaved = false; // true si las filas ya existen en data.participantes (se abrió con Ver/Editar)
 let genEliminarCtx = null;   // { index } mientras el modal de eliminar estudiante está abierto
+let genModoAgregar = false;             // true mientras el Generador está en modo agregar
+let genModoAgregarExistentes = [];      // copia de genPreviewRows al entrar en modo agregar
 const GEN_COLS = ['username','password','firstname','lastname','email','city','country','course1','group1','role1','enrolperiod1','suspended'];
 
 /* ── UTILIDADES ── */
@@ -964,12 +966,148 @@ function hideGenError() {
 }
 
 function hideGenPreview() {
+  if (genModoAgregar) {
+    genModoAgregar = false;
+    genModoAgregarExistentes = [];
+    const selColegio = document.getElementById('gen-colegio');
+    const selAnio = document.getElementById('gen-anio');
+    const selGrupo = document.getElementById('gen-grupo');
+    if (selColegio) selColegio.disabled = false;
+    if (selAnio) selAnio.disabled = false;
+    if (selGrupo) selGrupo.disabled = false;
+    const banner = document.getElementById('gen-modo-agregar-banner');
+    if (banner) banner.style.display = 'none';
+    const counter = document.getElementById('gen-modo-contador');
+    if (counter) counter.style.display = 'none';
+  }
   genPreviewRows = [];
   genPreviewCtx = null;
   genPreviewSaved = false;
   genEliminarCtx = null;
+  const csvNuevosBtn = document.getElementById('gen-csv-nuevos-btn');
+  if (csvNuevosBtn) csvNuevosBtn.style.display = 'none';
   document.getElementById('gen-preview-card').style.display = 'none';
   hideGenError();
+}
+
+function salirModoAgregar() {
+  document.getElementById('gen-apellidos').value = '';
+  document.getElementById('gen-nombres').value = '';
+  hideGenPreview();
+}
+
+function _entrarModoAgregar() {
+  genModoAgregar = true;
+  genModoAgregarExistentes = genPreviewRows.map(r => ({ ...r }));
+
+  document.getElementById('gen-colegio').disabled = true;
+  document.getElementById('gen-anio').disabled = true;
+  document.getElementById('gen-grupo').disabled = true;
+
+  if (genPreviewRows.length) {
+    const first = genPreviewRows[0];
+    document.getElementById('gen-password').value = first.password || '1234';
+    document.getElementById('gen-ciudad').value = first.city || '';
+    document.getElementById('gen-grupo').value = genPreviewCtx.group1 || '';
+  }
+
+  const apLines = genModoAgregarExistentes.map(r => r.lastname || '');
+  const noLines = genModoAgregarExistentes.map(r =>
+    (r.username && r.firstname.startsWith(r.username + ' '))
+      ? r.firstname.slice(r.username.length + 1)
+      : (r.firstname || '')
+  );
+  document.getElementById('gen-apellidos').value = apLines.join('\n');
+  document.getElementById('gen-nombres').value = noLines.join('\n');
+
+  const col = data.colegios.find(c => c.id === genPreviewCtx.colegioId);
+  const n = genModoAgregarExistentes.length;
+  let info = `Modo agregar: ${genPreviewCtx.anio}`;
+  if (genPreviewCtx.group1) info += ` · Grupo ${genPreviewCtx.group1}`;
+  if (col) info += ` · ${col.nombre}`;
+  info += ` · ${n} estudiante${n !== 1 ? 's' : ''} existente${n !== 1 ? 's' : ''}.`;
+  info += ' Escribe debajo los apellidos y nombres de los nuevos.';
+  document.getElementById('gen-modo-agregar-info').textContent = info;
+  document.getElementById('gen-modo-agregar-banner').style.display = '';
+
+  const counter = document.getElementById('gen-modo-contador');
+  counter.style.display = '';
+  actualizarContadorModoAgregar();
+
+  const tieneNuevosYaGuardados = genPreviewRows.some(r => r.esNuevo);
+  document.getElementById('gen-csv-nuevos-btn').style.display = tieneNuevosYaGuardados ? '' : 'none';
+}
+
+function actualizarContadorModoAgregar() {
+  const counter = document.getElementById('gen-modo-contador');
+  if (!counter || !genModoAgregar) return;
+
+  const apLines = parseLines(document.getElementById('gen-apellidos').value);
+  const noLines = parseLines(document.getElementById('gen-nombres').value);
+  while (apLines.length && !apLines[apLines.length - 1]) apLines.pop();
+  while (noLines.length && !noLines[noLines.length - 1]) noLines.pop();
+  const maxLen = Math.max(apLines.length, noLines.length);
+
+  if (!maxLen) { counter.textContent = ''; return; }
+
+  const existentesSet = new Set(
+    genModoAgregarExistentes.map(r => {
+      const nombres = (r.username && r.firstname.startsWith(r.username + ' '))
+        ? r.firstname.slice(r.username.length + 1) : (r.firstname || '');
+      return normalize(r.lastname || '') + '||' + normalize(nombres);
+    })
+  );
+
+  let countEx = 0, countNu = 0;
+  for (let i = 0; i < maxLen; i++) {
+    const ap = (apLines[i] || '').trim();
+    const no = (noLines[i] || '').trim();
+    if (!ap && !no) continue;
+    const key = normalize(ap) + '||' + normalize(no);
+    if (existentesSet.has(key)) countEx++;
+    else countNu++;
+  }
+  counter.textContent = `${countEx} existente${countEx !== 1 ? 's' : ''} · ${countNu} nuevo${countNu !== 1 ? 's' : ''}`;
+}
+
+function onGenTextareaInput() {
+  if (genModoAgregar) actualizarContadorModoAgregar();
+}
+
+function calcularRangos(rows) {
+  if (!rows.length) return '';
+  const sorted = [...rows].sort((a, b) => a.username.localeCompare(b.username));
+  if (sorted.length === 1) return sorted[0].username;
+  const withP = sorted.map(r => ({ u: r.username, p: parseUsername(r.username) }));
+  if (!withP.every(x => x.p)) return `${sorted[0].username} – ${sorted[sorted.length - 1].username}`;
+  const prefix0 = withP[0].p.prefix.toLowerCase();
+  if (!withP.every(x => x.p.prefix.toLowerCase() === prefix0)) {
+    return `${sorted[0].username} – ${sorted[sorted.length - 1].username}`;
+  }
+  const byNum = [...withP].sort((a, b) => a.p.num - b.p.num);
+  const segs = []; let segStart = 0;
+  for (let i = 1; i <= byNum.length; i++) {
+    if (i === byNum.length || byNum[i].p.num !== byNum[i - 1].p.num + 1) {
+      segs.push({ from: byNum[segStart].u, to: byNum[i - 1].u });
+      segStart = i;
+    }
+  }
+  if (segs.length === 1) return `${segs[0].from} – ${segs[0].to}`;
+  return segs.map(s => s.from === s.to ? s.from : `${s.from}–${s.to}`).join(', ');
+}
+
+function descargarCSVNuevos() {
+  const nuevos = genPreviewRows.filter(r => r.esNuevo);
+  if (!nuevos.length) { showToast('No hay estudiantes nuevos en esta vista'); return; }
+  const csv = buildUsuariosCSV(nuevos);
+  const anio = genPreviewCtx ? genPreviewCtx.anio : (genAnioSel || '');
+  const grupo = genPreviewCtx ? (genPreviewCtx.group1 || '') : '';
+  let nombre = (anio).toLocaleLowerCase('es');
+  if (grupo) nombre += ` ${grupo}`;
+  nombre += '_nuevos';
+  nombre = nombre.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+  downloadFile(csv, `${nombre}.csv`, 'text/csv;charset=utf-8;');
+  showToast('CSV de nuevos descargado ✓');
 }
 
 function parseLines(text) {
@@ -988,6 +1126,8 @@ function generarListaUsuarios() {
     return;
   }
   const prefix = nombreCorto.slice(lastDash + 1);
+
+  if (genModoAgregar) { _generarListaEnModoAgregar(prefix); return; }
 
   const apLines = parseLines(document.getElementById('gen-apellidos').value);
   const noLines = parseLines(document.getElementById('gen-nombres').value);
@@ -1133,12 +1273,18 @@ function importarCSVArchivo(event) {
 function renderGenPreviewTable() {
   const body = document.getElementById('gen-preview-body');
   body.innerHTML = genPreviewRows.map((r, i) => {
-    return '<tr>' + GEN_COLS.map(col => {
+    const esNuevo = r.esNuevo === true;
+    const rowClass = esNuevo ? ' class="gen-row-nuevo"' : '';
+    return `<tr${rowClass}>` + GEN_COLS.map(col => {
       const id = `gp-${col}-${i}`;
       const handler = col === 'username'
         ? `onchange="onGenUsernameEdit(${i}, this.value)"`
         : `oninput="onGenFieldEdit(${i}, '${col}', this.value)"`;
-      return `<td><input class="table-input" id="${id}" value="${esc(r[col])}" ${handler}></td>`;
+      let cellHtml = `<input class="table-input" id="${id}" value="${esc(r[col])}" ${handler}>`;
+      if (col === 'username' && esNuevo) {
+        cellHtml = `<span class="badge-nuevo" aria-label="Estudiante nuevo">Nuevo</span>${cellHtml}`;
+      }
+      return `<td>${cellHtml}</td>`;
     }).join('') + `<td class="row-actions"><button class="icon-btn danger" title="Eliminar estudiante" onclick="abrirEliminarEstudiante(${i})">🗑</button></td></tr>`;
   }).join('');
   renderGenPreviewTitle();
@@ -1152,7 +1298,14 @@ function renderGenPreviewTitle() {
   const col = data.colegios.find(c => c.id === genPreviewCtx.colegioId);
   const partes = [col ? col.nombre : '(colegio eliminado)', genPreviewCtx.anio];
   if (genPreviewCtx.group1) partes.push('Grupo ' + genPreviewCtx.group1);
-  partes.push(`${genPreviewRows.length} estudiante${genPreviewRows.length === 1 ? '' : 's'}`);
+  if (genModoAgregar) {
+    const nEx = genPreviewRows.filter(r => !r.esNuevo).length;
+    const nNuevo = genPreviewRows.filter(r => r.esNuevo).length;
+    partes.push(`${nEx} existente${nEx !== 1 ? 's' : ''}`);
+    if (nNuevo) partes.push(`${nNuevo} nuevo${nNuevo !== 1 ? 's' : ''}`);
+  } else {
+    partes.push(`${genPreviewRows.length} estudiante${genPreviewRows.length === 1 ? '' : 's'}`);
+  }
   el.textContent = partes.join(' · ');
 }
 
@@ -1179,8 +1332,131 @@ function onGenUsernameEdit(i, value) {
   if (emInput) emInput.value = row.email;
 }
 
+function _generarListaEnModoAgregar(prefix) {
+  const apLines = parseLines(document.getElementById('gen-apellidos').value);
+  const noLines = parseLines(document.getElementById('gen-nombres').value);
+  while (apLines.length && apLines[apLines.length - 1] === '') apLines.pop();
+  while (noLines.length && noLines[noLines.length - 1] === '') noLines.pop();
+
+  const maxLen = Math.max(apLines.length, noLines.length);
+  if (!maxLen) { showGenError('Escribe al menos un estudiante en Apellidos y Nombres.'); return; }
+  for (let i = 0; i < maxLen; i++) {
+    if (!apLines[i] || !noLines[i]) {
+      showGenError(`Las cajas de Apellidos y Nombres no coinciden en la línea ${i + 1}.`);
+      return;
+    }
+  }
+
+  const existentesSet = new Set(
+    genModoAgregarExistentes.map(r => {
+      const nombres = (r.username && r.firstname.startsWith(r.username + ' '))
+        ? r.firstname.slice(r.username.length + 1) : (r.firstname || '');
+      return normalize(r.lastname || '') + '||' + normalize(nombres);
+    })
+  );
+
+  const nuevosAp = [], nuevosNo = [];
+  let countEx = 0;
+  for (let i = 0; i < maxLen; i++) {
+    const ap = apLines[i].trim();
+    const no = noLines[i].trim();
+    const key = normalize(ap) + '||' + normalize(no);
+    if (existentesSet.has(key)) { countEx++; }
+    else { nuevosAp.push(ap); nuevosNo.push(no); }
+  }
+
+  if (!nuevosAp.length) {
+    const aviso = countEx > 0
+      ? `No hay estudiantes nuevos (${countEx} de las ${maxLen} líneas ya están en la lista).`
+      : 'No hay estudiantes nuevos que generar.';
+    showGenError(aviso);
+    return;
+  }
+
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+  const curso = cursoMap[genAsig.cursoId];
+  const nivel = curso ? curso.nivel : 'media';
+  const digits = nivel === 'primaria' ? 3 : 4;
+
+  let maxNum = 0;
+  data.participantes
+    .filter(p => p.colegioId === genColegioId)
+    .forEach(p => {
+      const pNivel = p.nivel || (cursoMap[p.cursoId] || {}).nivel;
+      if (pNivel !== nivel) return;
+      const parsed = parseUsername(p.username);
+      if (parsed && parsed.prefix.toLowerCase() === prefix.toLowerCase()) {
+        maxNum = Math.max(maxNum, parsed.num);
+      }
+    });
+  const start = maxNum + 1;
+
+  const password = document.getElementById('gen-password').value.trim() || '1234';
+  const city = document.getElementById('gen-ciudad').value.trim();
+  const { group1, colegioId, cursoId, anio } = genPreviewCtx;
+  const nombreCorto = genAsig.nombreCorto;
+
+  const nuevasFilas = [];
+  for (let i = 0; i < nuevosAp.length; i++) {
+    const num = String(start + i).padStart(digits, '0');
+    const username = prefix + num;
+    nuevasFilas.push({
+      username, password,
+      firstname: `${username} ${nuevosNo[i]}`,
+      lastname: nuevosAp[i],
+      email: `${username}@${ACADEMIA_ACTUAL.emailDominio}`,
+      city, country: 'Venezuela',
+      course1: nombreCorto,
+      group1, role1: 'student', enrolperiod1: '365d', suspended: '0',
+      esNuevo: true
+    });
+  }
+
+  genPreviewRows = [...genModoAgregarExistentes, ...nuevasFilas];
+  genPreviewCtx = { colegioId, cursoId, anio, nivel, group1 };
+
+  renderGenPreviewTable();
+  renderGenPreviewTitle();
+  document.getElementById('gen-preview-card').style.display = '';
+  const n = nuevasFilas.length;
+  showToast(`${countEx} existente${countEx !== 1 ? 's' : ''} · ${n} nuevo${n !== 1 ? 's' : ''} generado${n !== 1 ? 's' : ''} ✓`);
+  hideGenError();
+}
+
+function _guardarListaEnModoAgregar() {
+  const nuevos = genPreviewRows.filter(r => r.esNuevo);
+  if (!nuevos.length) { showToast('No hay estudiantes nuevos que agregar'); return; }
+  const { colegioId, cursoId, anio, nivel } = genPreviewCtx;
+  const fecha = todayStr();
+  const agregadoEn = new Date().toISOString();
+  nuevos.forEach(r => {
+    let nombres = r.firstname;
+    if (r.username && r.firstname.startsWith(r.username + ' ')) nombres = r.firstname.slice(r.username.length + 1);
+    data.participantes.push({
+      id: uid(), colegioId, cursoId, anio, nivel,
+      username: r.username, password: r.password,
+      nombres, apellidos: r.lastname,
+      email: r.email, city: r.city, country: r.country,
+      course1: r.course1, group1: r.group1, role1: r.role1,
+      enrolperiod1: r.enrolperiod1, suspended: r.suspended,
+      fecha, agregadoEn
+    });
+  });
+  saveData();
+  genPreviewSaved = true;
+  const n = nuevos.length;
+  showToast(`${n} estudiante${n !== 1 ? 's' : ''} nuevo${n !== 1 ? 's' : ''} agregado${n !== 1 ? 's' : ''} ✓`);
+  renderGenYearsSummary();
+  renderGenPreviewTitle();
+  if (currentCollegeId === colegioId) renderCollegeParticipantes(colegioId);
+  document.getElementById('gen-csv-nuevos-btn').style.display = '';
+}
+
 function guardarListaUsuarios() {
   if (!genPreviewRows.length || !genPreviewCtx) { showToast('Genera una lista primero'); return; }
+
+  if (genModoAgregar) { _guardarListaEnModoAgregar(); return; }
+
   const { colegioId, cursoId, anio, nivel } = genPreviewCtx;
 
   const gruposPresentes = [...new Set(genPreviewRows.map(r => r.group1 || ''))];
@@ -1317,14 +1593,14 @@ function renderGenYearsLevelTable(groups, bodyId, emptyId, wrapId) {
   wrap.style.display = '';
   body.innerHTML = groups.map(g => {
     const rows = [...g.rows].sort((a,b) => a.username.localeCompare(b.username));
-    const first = rows[0].username, last = rows[rows.length - 1].username;
+    const rango = calcularRangos(rows);
     return `<tr>
       <td><b>${esc(g.anio)}</b></td>
       <td>${esc(g.grupo || '—')}</td>
       <td>${rows.length}</td>
-      <td><code>${esc(first)} – ${esc(last)}</code></td>
+      <td><code title="${esc(rango)}">${esc(rango)}</code></td>
       <td class="row-actions">
-        <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="verEditarGenYear(this.dataset.anio, this.dataset.grupo)">Ver/Editar</button>
+        <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="verEditarGenYear(this.dataset.anio, this.dataset.grupo)" aria-label="Ver y editar lista para agregar estudiantes">Ver/Editar</button>
         <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="descargarCSVGenYear(this.dataset.anio, this.dataset.grupo)">⬇ CSV</button>
         <button class="btn btn-ghost" data-anio="${esc(g.anio)}" data-grupo="${esc(g.grupo)}" onclick="eliminarGenLista(this.dataset.anio, this.dataset.grupo)">🗑 Eliminar</button>
       </td>
@@ -1347,7 +1623,8 @@ function verEditarGenYear(anio, grupo) {
     firstname: `${p.username} ${p.nombres}`,
     lastname: p.apellidos, email: p.email,
     city: p.city, country: p.country, course1: p.course1,
-    group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended
+    group1: p.group1, role1: p.role1, enrolperiod1: p.enrolperiod1, suspended: p.suspended,
+    esNuevo: !!p.agregadoEn
   }));
   const cursoIdCtx = rows[0].cursoId || genAsig.cursoId;
   const nivelCtx = rows[0].nivel || (data.cursos.find(c => c.id === cursoIdCtx) || {}).nivel;
@@ -1357,6 +1634,7 @@ function verEditarGenYear(anio, grupo) {
   const card = document.getElementById('gen-preview-card');
   card.style.display = '';
   card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  _entrarModoAgregar();
 }
 
 function descargarCSVGenYear(anio, grupo) {
@@ -1392,11 +1670,18 @@ function eliminarGenLista(anio, grupo) {
   });
   data.participantes = data.participantes.filter(p => !(p.colegioId === genColegioId && p.anio === anio && (p.group1||'') === grupo));
   saveData();
+  if (genModoAgregar && genPreviewCtx && genPreviewCtx.anio === anio && (genPreviewCtx.group1 || '') === grupo) {
+    document.getElementById('gen-apellidos').value = '';
+    document.getElementById('gen-nombres').value = '';
+    hideGenPreview();
+    showToast('Lista movida a la papelera. Se salió del modo agregar.');
+  } else {
+    showToast('Lista movida a la papelera');
+  }
   renderGenYearsSummary();
   if (currentCollegeId === genColegioId) renderCollegeParticipantes(genColegioId);
   renderTrash();
   updateTrashBadge();
-  showToast('Lista movida a la papelera');
 }
 
 /* ── Eliminar un estudiante individual desde Ver/Editar (§2.2) ── */

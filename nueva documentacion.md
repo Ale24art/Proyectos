@@ -41,6 +41,43 @@ Los archivos `INSTRUCCION.md`, `INSTRUCCION_claude_code_generar_documentacion.md
 
 ---
 
+## Cambios — 2026-10-08 (pendientes de commit)
+
+### Modo agregar estudiantes a una lista existente (Generador de usuarios)
+
+**Archivos modificados:** `script.js` (v6→v7), `styles.css` (v4→v5), `index.html` (versiones actualizadas), `database/schema.sql`, `database/scripts/mapeo.js`, `database/scripts/sqlite-schema.js`, `database/scripts/ejemplo_ficticio.json`.
+
+**Archivo nuevo:** `database/scripts/test_agregar_estudiantes.js`.
+
+**Flujo:** Al pulsar "Ver/Editar" en una lista de "Años ya generados", el Generador entra en **modo agregar**: los selectores de colegio, año y grupo quedan bloqueados; las textareas de Apellidos y Nombres se rellenan con los estudiantes existentes; se muestra un banner informativo con el conteo y un botón "Salir del modo agregar". El usuario escribe los apellidos y nombres de los nuevos estudiantes al final de los cuadros y pulsa "Generar lista". El sistema compara cada par (apellido, nombre) con los existentes (sin distinguir mayúsculas ni espacios), omite los que ya están y genera usuarios solo para los nuevos. La tabla de vista previa muestra los existentes + los nuevos con el badge `Nuevo` y fondo de color. Al pulsar "Guardar lista" en modo agregar, los nuevos se **agregan** a la lista existente (la Papelera no recibe nada); cada participante nuevo lleva el campo opcional `agregadoEn` (ISO 8601). Un botón "⬇ CSV solo de los nuevos" aparece al guardar y también al abrir con Ver/Editar cualquier lista que tenga participantes con `agregadoEn`.
+
+**Reglas de negocio aplicadas:**
+- El pool de numeración se calcula igual que en el modo normal: máximo del colegio + nivel + prefijo en `data.participantes` (sin contar la Papelera). El prefijo sale del `nombreCorto` de la asignación (`slice(lastDash + 1)`).
+- El ancho de dígitos se mantiene igual: 4 para media, 3 para primaria.
+- Filas con prefijo distinto al dominante (docentes importados de Cleveland) no afectan la numeración.
+- Lista sin usuarios de formato válido: cae al comportamiento normal de generación.
+- Contador en vivo "N existentes · M nuevos" visible mientras se escribe.
+- Si se elimina la lista mientras está en modo agregar, se sale del modo con aviso.
+- El "Rango de usuarios" de "Años ya generados" ahora muestra rangos no continuos correctamente (p. ej. `ag0001–ag0014, ag0086–ag0090`).
+
+**Campo `agregadoEn` (esquema):**
+- Campo **opcional** en `data.participantes[]`: `agregadoEn: string (ISO 8601)`. Su ausencia significa "generado en la creación de la lista". Retrocompatible: `loadData()` e `importBackup()` no requieren cambios (campo extra ignorado por `parsed.x || default`).
+- En `database/schema.sql`: columna `agregado_en DATETIME NULL`.
+- En `database/scripts/mapeo.js`: `filaParticipante` mapea `p.agregadoEn → agregado_en`; `participante` mapea `p.agregado_en → agregadoEn` (solo si no null).
+- En `database/scripts/sqlite-schema.js`: columna `agregado_en TEXT` añadida.
+- En `database/scripts/ejemplo_ficticio.json`: un participante con `agregadoEn` de ejemplo.
+
+**Funciones nuevas en `script.js`:**
+`salirModoAgregar`, `_entrarModoAgregar`, `_generarListaEnModoAgregar`, `_guardarListaEnModoAgregar`, `actualizarContadorModoAgregar`, `onGenTextareaInput`, `calcularRangos`, `descargarCSVNuevos`.
+
+**Variables de estado nuevas:** `genModoAgregar` (boolean), `genModoAgregarExistentes` (array snapshot de genPreviewRows al entrar en modo agregar).
+
+**Nuevo acordeón/elemento:** no se agregaron acordeones nuevos. El banner de modo agregar (`#gen-modo-agregar-banner`) y el contador (`#gen-modo-contador`) son elementos inline del card principal del Generador.
+
+**Secciones actualizadas en este documento:** §2 (versiones `?v=`), §4.1 (campo `agregadoEn`), §6 (modo agregar, reglas de numeración en modo agregar, CSV de nuevos), §9 (guía para agregar estudiantes), §11 (riesgos nuevos).
+
+---
+
 ## Cambios — 2026-10-06 (pendientes de commit)
 
 ### Habilitar "Importar CSV" para Cleveland con carga fiel
@@ -180,7 +217,7 @@ academias.js?v=2  →  sync-core.js?v=1  →  sync.js?v=1
 ```
 `script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes que todo. `sync.js` también lee `ACADEMIA_ACTUAL` (para `STORAGE_KEY`/`ACADEMIA_ID`) y `SyncCore` (de `sync-core.js`), por eso va justo después. Los tres `<script>` del SDK de Firebase llevan `onerror` inline que solo deja un `console.info` — si no cargan (sin internet, bloqueados), el resto de la carga continúa sin lanzar errores. `firebase-config.js` y `sync-firebase.js` comprueban `typeof firebase !== 'undefined'` antes de usarlo; si no está, no registran ningún adaptador y `window.Sync` queda en modo solo local (ver §9a). `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting (estado actual):** `script.js?v=6`, `academias.js?v=2`, `styles.css?v=4`, `carnets.js?v=2`, `carnets-pdf.js?v=1`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
+**Cache-busting (estado actual):** `script.js?v=7`, `academias.js?v=2`, `styles.css?v=5`, `carnets.js?v=2`, `carnets-pdf.js?v=1`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propio login, su propio `script.js`, y un `firebase-config.js` (ese proyecto sí usa o usó Firebase real). No comparte nada de código con `Organizador_moodle/`.
 
@@ -358,6 +395,7 @@ Objeto global `data` (vive en memoria + se serializa a `localStorage[STORAGE_KEY
       "email": "ah0001@tecno.com", "city": "Acarigua", "country": "Venezuela",
       "course1": "1styear-ah", "group1": "", "role1": "student",
       "enrolperiod1": "365d", "suspended": "0", "fecha": "2026-02-10"
+      // opcional: "agregadoEn": "2026-10-08T10:30:00.000Z"  — solo en participantes añadidos con modo agregar
     }
   ],
   "carnetListas": [
@@ -540,7 +578,38 @@ En la vista editable (Ver/Editar) de una lista, cada fila tiene un botón 🗑 q
 - **Lista recién generada** (`genPreviewSaved === false`): todo ocurre solo en `genPreviewRows` (nunca existió en `data`, por eso no pasa por Papelera).
 - Si se elimina el último estudiante de una lista guardada, la lista desaparece de "Años ya generados" y el editor se cierra.
 
-### 6.5 Participantes en el detalle de un colegio
+### 6.5 Modo agregar estudiantes a una lista existente
+
+Al pulsar **Ver/Editar** en "Años ya generados", el Generador entra en **modo agregar** (estado `genModoAgregar = true`):
+
+1. Los selectores de colegio, año y grupo quedan deshabilitados (`disabled`); los campos de información (curso modelo, nombre corto, nivel) siguen siendo solo lectura.
+2. Los cuadros de Apellidos y Nombres se rellenan con los estudiantes de la lista, en el mismo orden en que están guardados (ordenados por `username`).
+3. La contraseña y la ciudad se rellenan desde el primer estudiante existente y siguen siendo editables (aplican solo a los nuevos).
+4. Se muestra el banner `#gen-modo-agregar-banner` con el conteo y el botón "Salir del modo agregar" (llama a `salirModoAgregar()`).
+5. El contador en vivo `#gen-modo-contador` muestra "N existentes · M nuevos" y se actualiza con `oninput` de los cuadros.
+
+**Al pulsar "Generar lista" en modo agregar** (`_generarListaEnModoAgregar(prefix)`):
+- Se compara cada par (apellido, nombre) del formulario contra los existentes usando `normalize()` (sin mayúsculas ni acentos ni espacios sobrantes).
+- Los pares que coinciden con un existente se omiten (`countEx`); los demás son nuevos.
+- Si no hay nuevos, muestra un aviso y no hace nada.
+- Los nuevos se generan con el pool de numeración idéntico al modo normal (máximo de `data.participantes` filtrando por `colegioId` + `nivel` + `prefix`; **no** cuenta la Papelera). El prefijo y el ancho de dígitos salen del `nombreCorto` de la asignación.
+- `genPreviewRows` resulta: `[...existentes_snapshot, ...nuevasFilas]`. Las filas nuevas llevan `esNuevo: true`.
+- La tabla de vista previa marca las filas nuevas con clase CSS `.gen-row-nuevo` y badge `.badge-nuevo` "Nuevo" en la celda del usuario.
+- El título de la tabla muestra "N existentes · M nuevos".
+
+**Al pulsar "Guardar lista" en modo agregar** (`_guardarListaEnModoAgregar()`):
+- Solo las filas con `esNuevo: true` se insertan en `data.participantes`, cada una con el campo `agregadoEn: new Date().toISOString()`.
+- **No** se mueve nada a la Papelera ni se crea una nueva lista.
+- Se actualiza "Años ya generados" y la vista de Participantes del colegio.
+- El botón "⬇ CSV solo de los nuevos" (`#gen-csv-nuevos-btn`) queda visible.
+
+**Campo `agregadoEn`:** `string ISO 8601`, presente solo en participantes añadidos mediante el modo agregar. Al cargar una lista con Ver/Editar, los participantes con `agregadoEn` en `data.participantes` se marcan con `esNuevo: true` en `genPreviewRows`, lo que activa el badge y el botón "⬇ CSV solo de los nuevos".
+
+**"Rango de usuarios" en "Años ya generados":** ahora usa `calcularRangos(rows)` en vez de `first – last`. Si los números son continuos, produce el mismo resultado de antes. Si son no continuos (por ejemplo lista con `ag0001–ag0014` a la que se agregaron `ag0086–ag0090`), muestra los tramos separados por comas: `ag0001–ag0014, ag0086–ag0090`.
+
+**"⬇ CSV solo de los nuevos"** (`descargarCSVNuevos()`): exporta con el mismo formato de carga masiva de Moodle que el CSV completo, pero solo con las filas donde `esNuevo === true`. El nombre de archivo sigue la convención de `nombreArchivoDescarga()` más el sufijo `_nuevos`.
+
+### 6.7 Participantes en el detalle de un colegio
 Tarjeta de Participantes en la vista Colegios (`renderCollegeParticipantes`, `renderCollegeParticipantesTable`):
 - Selector de Año/Grado con `<optgroup>` Media/Primaria (misma estructura y orden que `fillGenAnioSelect()`), solo con años que tienen participantes.
 - Si hay más de un grupo en el año elegido, aparece selector de Grupo (con opción "Todos").
@@ -552,7 +621,7 @@ Tarjeta de Participantes en la vista Colegios (`renderCollegeParticipantes`, `re
 - **Descarga XLSX** (`descargarXLSXParticipantesColegio`): exporta **toda** la selección de año/grupo sin paginar ni filtrar por búsqueda. Nombre de archivo generado por `nombreArchivoDescarga(anio, grupo, 'xlsx')`.
 - Copiar al portapapeles por fila (formato: `"Estudiante: nombres apellidos\nUSUARIO: ...\nCLAVE: ..."`).
 
-### 6.6 Sistema de acordeón reutilizable
+### 6.8 Sistema de acordeón reutilizable
 (`uiAcordeones`, `accOpen`, `applyAccState`, `toggleAcordeon` — `script.js`; clases `.acc-*` — `styles.css`)
 
 Estado abierto/cerrado en memoria (no en `data` ni `localStorage`) para no perder el estado al re-renderizar con `innerHTML`. Por defecto todos empiezan abiertos. Claves activas:
@@ -560,7 +629,7 @@ Estado abierto/cerrado en memoria (no en `data` ni `localStorage`) para no perde
 - `gen-media` / `gen-primaria` — acordeones de "Años ya generados".
 - `col-cursos-media` / `col-cursos-primaria` — cursos copiados en el detalle de colegio.
 
-### 6.7 Sistema de paginación reutilizable
+### 6.9 Sistema de paginación reutilizable
 (`paginaInfo`, `paginaBotones`, `renderPaginacionHTML` — `script.js`; clases `.pg-*` — `styles.css`)
 
 Usado hoy solo en la tabla de Participantes de Colegios. `paginaInfo` clampa la página a rango válido y devuelve `{page, totalPages, start, end}`. `paginaBotones` produce primera, última y actual ±2 con "…" en los huecos. `renderPaginacionHTML(containerId, page, totalPages, onClickFnName)` inyecta el HTML de los botones en el elemento con `id=containerId`.
@@ -685,6 +754,16 @@ Para que aparezca en el arranque/restablecimiento: agregar a `DEFAULT_CURSOS` en
 4. Si la nube está activa, revisar si la clave nueva necesita su propio mapeo en `SyncCore.construirIndiceLocal()`/`entidadesADatos()` (`Organizador_moodle/sync-core.js`) — de lo contrario, esa clave nueva no se sincronizará.
 5. Actualizar el ejemplo de esquema de §4.1 de este documento, y las columnas correspondientes en `database/schema.sql` + `database/scripts/mapeo.js` si el dato también debe viajar a la base SQL portable.
 
+**i_agregar) Agregar estudiantes nuevos a una lista ya existente**
+1. En "Generador de usuarios → Años ya generados", pulsa **Ver/Editar** en la lista a la que quieres agregar.
+2. El formulario entra en **modo agregar** automáticamente: los selectores quedan bloqueados y los cuadros de Apellidos y Nombres se rellenan con los estudiantes existentes.
+3. En los cuadros, agrega (al final) los apellidos y nombres de los estudiantes nuevos, uno por línea, en el mismo orden en ambos cuadros.
+4. El contador "N existentes · M nuevos" muestra cuántos ya están y cuántos se generarán.
+5. Pulsa **Generar lista**: el sistema genera usuarios solo para los nuevos y los muestra con el badge "Nuevo" en la tabla.
+6. Revisa la tabla y pulsa **Guardar lista** para agregar los nuevos a la lista existente. La Papelera no recibe nada.
+7. Después de guardar, usa **⬇ CSV solo de los nuevos** para descargar el CSV listo para subir a Moodle (sin los usuarios que ya existen allí). El botón "⬇ CSV" completo sigue descargando toda la lista.
+8. Para volver al modo normal sin agregar nada, pulsa **Salir del modo agregar**.
+
 **h) Mudar la app a un servidor propio (sin Firebase)**
 Ver `database/MIGRACION_A_SERVIDOR_PROPIO.md` para la guía completa. En resumen: `Organizador_moodle/` es estática y se copia tal cual; lo único que hay que reemplazar es `sync-firebase.js` por un adaptador nuevo (p. ej. `sync-rest.js`) que implemente las mismas 7 funciones contra una API propia, y registrarlo con `window.Sync._registrarAdaptador(...)`. `sync.js`, `sync-core.js` y `script.js` no cambian. `database/schema.sql` + `database/scripts/respaldo_a_sql.js` sirven para cargar los datos actuales (vía un Respaldo `.json` exportado desde la app) en la base SQL que use ese servidor nuevo.
 
@@ -745,6 +824,13 @@ Hasta el commit `1ff425c`, `deleteManualList()` y "Eliminar todas las listas" qu
 - **`eliminado_en` aproximado para colegios/cursos/asignaciones en `database/scripts/mapeo.js`**: el formato del Respaldo no guarda la fecha exacta en que esos tres tipos fueron enviados a la Papelera (a diferencia de `trash.estudiantes` y `trash.carnetListas`, que sí la llevan). Los scripts de `database/` usan la fecha de exportación del respaldo como aproximación — ver `database/README.md`.
 - **No se implementó `firestore_a_sql.js`** (decisión explícita: no es necesario por ahora; el camino principal es Respaldo `.json` → SQL, que no requiere credenciales de Admin SDK).
 - **Multi-organización:** `sync-core.js`, `firestore.rules` (vía `auth_map`) y `database/schema.sql` ya usan un identificador genérico de organización (`academiaId`/`academia_id`) en vez de comparaciones fijas a `'tecno'`/`'cleveland'`. Esto no significa que la Fase 2 implemente soporte multi-organización en la UI — `script.js` sigue teniendo comparaciones `ACADEMIA_ACTUAL.id === 'tecno'` heredadas (§3.4, §9a) que una tercera academia con catálogo propio seguiría necesitando resolver a mano.
+
+### 11.8 Riesgos del modo agregar
+
+- **Coincidencia por nombre/apellido:** la detección de existentes se hace por comparación `normalize(apellido) || normalize(nombre)` sin distinguir mayúsculas ni acentos. Si dos estudiantes distintos tienen exactamente el mismo nombre y apellido, el segundo se considera "existente" y no se genera (falso positivo). El usuario debe revisar el contador y la tabla antes de guardar.
+- **Rangos no continuos:** si se agregan usuarios y los números del pool no son consecutivos con los anteriores (por ejemplo porque hay estudiantes en otras listas del mismo colegio con números intermedios), el rango mostrado en "Años ya generados" será no contiguo (`ag0001–ag0014, ag0086–ag0090`). Esto es correcto y esperado, pero puede confundir a quien espera siempre un rango simple.
+- **Reestructurar con nuevos:** si se elimina un estudiante y se elige "Reestructurar" en una lista que ya tiene estudiantes agregados (con `agregadoEn`), los nuevos también se renumeran. El badge "Nuevo" en la tabla se perderá (la fila ya no tiene `esNuevo`) hasta que se vuelva a cargar con Ver/Editar.
+- **CSV solo de nuevos fuera de sesión:** el botón "⬇ CSV solo de los nuevos" depende de `genPreviewRows` en memoria. Si el usuario recarga la página después de guardar, el botón no estará visible hasta que abra la lista con Ver/Editar (que detecta los participantes con `agregadoEn` y muestra el botón). El CSV completo siempre está disponible desde "Años ya generados".
 
 ### 11.7 Lo que no se pudo verificar
 - No se probó la app en un navegador real durante esta revisión. Todo lo listado en el checklist se verificó por lectura directa del código, más pruebas automatizadas en Node para la lógica de sincronización y de la base de datos (ver `database/scripts/test_*.js`).

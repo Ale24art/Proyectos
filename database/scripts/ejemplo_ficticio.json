@@ -110,6 +110,27 @@
       "enrolperiod1": "365d",
       "suspended": "0",
       "fecha": "2026-02-11"
+    },
+    {
+      "id": "idnew001xx",
+      "colegioId": "ide65jdyf7",
+      "cursoId": "idpp7oi8za",
+      "anio": "1er grado",
+      "nivel": "primaria",
+      "username": "ced002",
+      "password": "1234",
+      "nombres": "MARIA",
+      "apellidos": "TORRES ROJAS",
+      "email": "ced002@ejemplo.com",
+      "city": "Ciudad Ejemplo",
+      "country": "Venezuela",
+      "course1": "1stgrade-ced",
+      "group1": "A",
+      "role1": "student",
+      "enrolperiod1": "365d",
+      "suspended": "0",
+      "fecha": "2026-10-08",
+      "agregadoEn": "2026-10-08T10:30:00.000Z"
     }
   ],
   "carnetListas": [

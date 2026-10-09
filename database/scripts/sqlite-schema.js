@@ -29,7 +29,7 @@ const TABLAS = [
     id TEXT PRIMARY KEY, academia_id TEXT, colegio_id TEXT, curso_id TEXT, anio TEXT, nivel TEXT,
     username TEXT, password TEXT, firstname TEXT, lastname TEXT, email TEXT, city TEXT, country TEXT,
     course1 TEXT, group1 TEXT, role1 TEXT, enrolperiod1 TEXT, suspended TEXT,
-    nombres TEXT, apellidos TEXT, fecha TEXT,
+    nombres TEXT, apellidos TEXT, fecha TEXT, agregado_en TEXT,
     eliminado_en TEXT, lote_baja TEXT, tipo_papelera TEXT, orden INTEGER DEFAULT 0
   )`,
   `CREATE TABLE carnet_listas (

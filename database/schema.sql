@@ -118,6 +118,7 @@ CREATE TABLE participantes (
   nombres         VARCHAR(256),   -- nombres sin el username antepuesto
   apellidos       VARCHAR(256),
   fecha           DATE,
+  agregado_en     DATETIME     DEFAULT NULL,  -- no NULL = añadido en modo agregar (campo opcional; ausencia = generado en la creación)
 
   -- Papelera: la app distingue dos formas de eliminar un participante
   -- (ver nueva documentacion.md §4.1): como parte de una LISTA completa

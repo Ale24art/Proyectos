@@ -42,7 +42,7 @@
 <title>Organizador Moodle</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=5">
 <link rel="stylesheet" href="carnets.css?v=1">
 </head>
 <body>
@@ -347,14 +347,19 @@
         </div>
       </div>
 
+      <div id="gen-modo-agregar-banner" class="gen-modo-agregar-banner" style="display:none" role="status" aria-live="polite">
+        <span id="gen-modo-agregar-info"></span>
+        <button type="button" class="btn btn-ghost btn-sm btn-salir" onclick="salirModoAgregar()" aria-label="Salir del modo agregar">Salir del modo agregar</button>
+      </div>
+
       <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div class="form-field">
           <label>Apellidos (un estudiante por línea)</label>
-          <textarea id="gen-apellidos" style="min-height:160px" placeholder="MONTILLA VALERO&#10;PEREZ GOMEZ"></textarea>
+          <textarea id="gen-apellidos" style="min-height:160px" placeholder="MONTILLA VALERO&#10;PEREZ GOMEZ" oninput="onGenTextareaInput()"></textarea>
         </div>
         <div class="form-field">
           <label>Nombres (mismo orden que Apellidos)</label>
-          <textarea id="gen-nombres" style="min-height:160px" placeholder="JOSE ALEJANDRO&#10;MARIA FERNANDA"></textarea>
+          <textarea id="gen-nombres" style="min-height:160px" placeholder="JOSE ALEJANDRO&#10;MARIA FERNANDA" oninput="onGenTextareaInput()"></textarea>
         </div>
       </div>
 
@@ -375,8 +380,9 @@
 
       <div id="gen-error" class="gen-error" style="display:none"></div>
 
-      <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:10px;flex-wrap:wrap;gap:8px">
         <button class="btn btn-primary" onclick="generarListaUsuarios()">Generar lista</button>
+        <span id="gen-modo-contador" class="gen-modo-contador" aria-live="polite"></span>
         <button class="btn btn-ghost" id="gen-import-btn" onclick="onImportCSVClick()">⬆ Importar CSV</button>
         <input type="file" id="gen-import-file" accept=".csv,text/csv" style="display:none" onchange="importarCSVArchivo(event)">
       </div>
@@ -398,9 +404,10 @@
           <tbody id="gen-preview-body"></tbody>
         </table>
       </div>
-      <div class="modal-actions" style="justify-content:flex-start;margin-top:14px">
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:14px;flex-wrap:wrap;gap:8px">
         <button class="btn btn-primary" onclick="guardarListaUsuarios()">Guardar lista</button>
         <button class="btn btn-ghost" onclick="descargarCSVPreview()">⬇ Descargar CSV</button>
+        <button class="btn btn-ghost" id="gen-csv-nuevos-btn" style="display:none" onclick="descargarCSVNuevos()" aria-label="Descargar CSV solo de los estudiantes nuevos">⬇ CSV solo de los nuevos</button>
       </div>
     </div>
 
@@ -970,7 +977,7 @@
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/jszip.min.js"></script>
-<script src="script.js?v=6"></script>
+<script src="script.js?v=7"></script>
 <script src="carnets-pdf.js?v=1"></script>
 <script src="carnets.js?v=2"></script>
 </body>
