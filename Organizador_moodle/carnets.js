@@ -553,7 +553,7 @@
         map.set(key, {
           key, cursoId: p.cursoId, anio: p.anio, grupo: p.group1 || '',
           cursoNombre: curso ? curso.nombre : '—',
-          nivel: curso ? curso.nivel : null,
+          nivel: nivelDe(p, cursoMap),
           participantes: []
         });
       }

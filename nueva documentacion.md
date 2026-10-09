@@ -42,6 +42,40 @@ Los archivos `INSTRUCCION.md`, `INSTRUCCION_claude_code_generar_documentacion.md
 
 ---
 
+## Cambios — 2026-10-09c (pendientes de commit)
+
+### Corrección: selector de Participantes y nivel en colegios afectados
+
+**Archivos modificados:** `script.js` (v9→v10), `carnets.js` (v3→v4), `index.html` (versiones actualizadas).
+
+**Síntoma corregido:** en colegios cuyos participantes de Media tienen `p.nivel` ausente, incorrecto o con otro formato (p.ej. `undefined`, `'Media'`, `'Educación Media'`), el selector "Año / Grado" mostraba los años de Media sueltos sin el encabezado "Educación Media", y el bloque "Descargar todo el nivel" no ofrecía Educación Media.
+
+**Causa raíz:** todas las comparaciones `p.nivel === 'media'` usaban igualdad estricta. Participantes generados en versiones anteriores del app (antes de que `nivel` se guardara explícitamente), importados desde respaldos viejos, o cuyo curso fue eliminado después de la generación, pueden tener `p.nivel` ausente o con valor no-canónico.
+
+**Corrección:** se agregaron tres funciones globales en `script.js`:
+- `_normNivelStr(s)` — normaliza `'Media'`/`'MEDIA'`/`'Educación Media'` → `'media'`; `'Primaria'`/`'Educación Primaria'` → `'primaria'`; cualquier otro valor → `null`.
+- `nivelDeAnio(anio)` — deriva el nivel del texto del año/grado: "…Año…"/"…Year…" → `'media'`; "…Grado…"/"…Grade…" → `'primaria'`.
+- `nivelDe(p, cursoMap)` — función pública, usada en todo el código. Tres niveles de respaldo: `p.nivel` normalizado → `cursoMap[p.cursoId].nivel` normalizado → `nivelDeAnio(p.anio)`.
+
+**Lugares actualizados** (ninguno toca datos guardados):
+| Función / Módulo | Cambio |
+|---|---|
+| `renderCollegeParticipantes` (script.js) | `nivelOf = anio => nivelDe(...)` — selector de Participantes con optgroups correctos |
+| `_actualizarNivelDownloadBlock` (script.js) | `nivelDe` para `hasMedia`/`hasPrimaria` — selector de nivel y botones XLSX/PDF |
+| `renderCdPartTitle` (script.js) | `nivelDe` para el texto del título de la tabla de participantes |
+| `renderGenYearsSummary` (script.js) | `nivelOf = g => nivelDe(g.rows[0], cursoMap)` — agrupación "Educación Media/Primaria · N listas" en Generador |
+| `fillGenAnioSelect` (script.js) | `_normNivelStr` + `nivelDeAnio` fallback en asignaciones del Generador |
+| Pool de numeración (×2) (script.js) | `nivelDe` reemplaza `p.nivel \|\| cursoMap…nivel` |
+| `descargarNivelXLSX` / `descargarNivelPDF` (script.js) | filtro `nivelDe` para incluir participantes con nivel ausente |
+| `descargarPDFParticipantesColegio` (script.js) | `nivelDe` para el texto "Educación Media/Primaria" en el PDF |
+| `computeParticipantGroups` (carnets.js) | `nivel: nivelDe(p, cursoMap)` — corrección en Generador de carnets Modo 2 |
+
+**Nota sobre el orden inconsistente del selector (preexistente):** `fillGenAnioSelect` ordena Media ascendente y Primaria **descendente** en el mismo `<select>`; `renderCollegeParticipantes` (que este cambio corrigió) y `renderGenYearsSummary` también ordenan Primaria descendente. No se modificó el orden — es una inconsistencia preexistente (§11.3). El nuevo comportamiento es que los años de Media ahora aparecen correctamente bajo su `<optgroup>`.
+
+**Reparación de datos:** no se modificaron datos guardados ni el flujo de escritura. Los participantes afectados siguen teniendo `p.nivel === undefined` en `localStorage`; el arreglo actúa en la lectura. Si deseas normalizar los datos almacenados para que `nivelDe` tenga que hacer menos trabajo (y para que otros consumidores futuros no dependan del fallback), puede hacerse con un script de migración puntual — ver propuesta en el reporte de cierre de esta sesión.
+
+---
+
 ## Cambios — 2026-10-09b (pendientes de commit)
 
 ### Correcciones de contenido en exportaciones de participantes
@@ -355,7 +389,7 @@ academias.js?v=2  →  sync-core.js?v=1  →  sync.js?v=1
 ```
 `script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes que todo. `sync.js` también lee `ACADEMIA_ACTUAL` (para `STORAGE_KEY`/`ACADEMIA_ID`) y `SyncCore` (de `sync-core.js`), por eso va justo después. Los tres `<script>` del SDK de Firebase llevan `onerror` inline que solo deja un `console.info` — si no cargan (sin internet, bloqueados), el resto de la carga continúa sin lanzar errores. `firebase-config.js` y `sync-firebase.js` comprueban `typeof firebase !== 'undefined'` antes de usarlo; si no está, no registran ningún adaptador y `window.Sync` queda en modo solo local (ver §9a). `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting (estado actual):** `script.js?v=9`, `academias.js?v=2`, `styles.css?v=5`, `carnets.js?v=3`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
+**Cache-busting (estado actual):** `script.js?v=10`, `academias.js?v=2`, `styles.css?v=5`, `carnets.js?v=4`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propio login, su propio `script.js`, y un `firebase-config.js` (ese proyecto sí usa o usó Firebase real). No comparte nada de código con `Organizador_moodle/`.
 

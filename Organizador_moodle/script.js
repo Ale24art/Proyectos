@@ -45,6 +45,36 @@ function extractAnioNum(anio) {
   return m ? parseInt(m[0], 10) : 0;
 }
 
+// Normaliza una cadena de nivel a 'media', 'primaria' o null.
+// Acepta: 'media', 'Media', 'MEDIA', 'Educación Media', 'educacion media', etc.
+function _normNivelStr(s) {
+  const v = String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  if (v === 'media' || v === 'educacion media') return 'media';
+  if (v === 'primaria' || v === 'educacion primaria') return 'primaria';
+  return null;
+}
+
+// Deriva el nivel a partir del texto del año/grado.
+// "…Año…" / "…Year…" → 'media'; "…Grado…" / "…Grade…" → 'primaria'.
+function nivelDeAnio(anio) {
+  const v = String(anio || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (/\bano\b|\byear\b/.test(v)) return 'media';
+  if (/\bgrado\b|\bgrade\b/.test(v)) return 'primaria';
+  return null;
+}
+
+// Devuelve el nivel canónico ('media' | 'primaria' | null) de un participante.
+// Orden de precedencia: p.nivel normalizado → cursoMap[p.cursoId].nivel → texto de p.anio.
+function nivelDe(p, cursoMap) {
+  const n1 = _normNivelStr(p.nivel);
+  if (n1) return n1;
+  if (cursoMap) {
+    const n2 = _normNivelStr((cursoMap[p.cursoId] || {}).nivel);
+    if (n2) return n2;
+  }
+  return nivelDeAnio(p.anio);
+}
+
 let data = null; // { colegios:[], cursos:[], asignaciones:[], participantes:[], trash:{colegios:[],cursos:[],asignaciones:[]} }
 
 let currentView = 'dashboard';
@@ -909,8 +939,9 @@ function fillGenAnioSelect(colegioId, selectedAnio) {
   }
 
   const nivelOf = anio => {
-    const a = asigsCollege.find(a => a.anio === anio);
-    return a ? (cursoMap[a.cursoId] || {}).nivel : null;
+    const a = asigsCollege.find(x => x.anio === anio);
+    if (!a) return null;
+    return _normNivelStr((cursoMap[a.cursoId] || {}).nivel) || nivelDeAnio(a.anio);
   };
   const media = anios.filter(a => nivelOf(a) === 'media').sort((a,b) => extractAnioNum(a) - extractAnioNum(b));
   const primaria = anios.filter(a => nivelOf(a) === 'primaria').sort((a,b) => extractAnioNum(b) - extractAnioNum(a));
@@ -1156,7 +1187,7 @@ function generarListaUsuarios() {
   data.participantes
     .filter(p => p.colegioId === genColegioId)
     .forEach(p => {
-      const pNivel = p.nivel || (cursoMap[p.cursoId] || {}).nivel;
+      const pNivel = nivelDe(p, cursoMap);
       if (pNivel !== nivel) return;
       const parsed = parseUsername(p.username);
       if (parsed && parsed.prefix.toLowerCase() === prefix.toLowerCase()) {
@@ -1382,7 +1413,7 @@ function _generarListaEnModoAgregar(prefix) {
   data.participantes
     .filter(p => p.colegioId === genColegioId)
     .forEach(p => {
-      const pNivel = p.nivel || (cursoMap[p.cursoId] || {}).nivel;
+      const pNivel = nivelDe(p, cursoMap);
       if (pNivel !== nivel) return;
       const parsed = parseUsername(p.username);
       if (parsed && parsed.prefix.toLowerCase() === prefix.toLowerCase()) {
@@ -1562,7 +1593,7 @@ function renderGenYearsSummary() {
   mediaCard.style.display = '';
   primariaCard.style.display = '';
 
-  const nivelOf = g => (cursoMap[g.cursoId] || {}).nivel;
+  const nivelOf = g => nivelDe(g.rows[0] || {}, cursoMap);
   const sortLevel = arr => arr.sort((a,b) =>
     extractAnioNum(b.anio) - extractAnioNum(a.anio) || (a.grupo||'').localeCompare(b.grupo||''));
   const mediaGroups = sortLevel(groups.filter(g => nivelOf(g) === 'media'));
@@ -1831,7 +1862,8 @@ function renderCollegeParticipantes(colegioId) {
   empty.style.display = 'none';
 
   // Agrupado Media/Primaria, misma estructura y orden que fillGenAnioSelect().
-  const nivelOf = anio => (mine.find(p => p.anio === anio) || {}).nivel;
+  const _cMapPart = {}; data.cursos.forEach(c => _cMapPart[c.id] = c);
+  const nivelOf = anio => nivelDe(mine.find(p => p.anio === anio) || {}, _cMapPart);
   const media = anios.filter(a => nivelOf(a) === 'media').sort((a,b) => extractAnioNum(a) - extractAnioNum(b));
   const primaria = anios.filter(a => nivelOf(a) === 'primaria').sort((a,b) => extractAnioNum(b) - extractAnioNum(a));
   const otros = anios.filter(a => !['media','primaria'].includes(nivelOf(a))).sort((a,b) => (a||'').localeCompare(b||''));
@@ -1897,7 +1929,9 @@ function cdPartSeleccion() {
 function renderCdPartTitle(anio, grupo, total) {
   const el = document.getElementById('cd-part-title');
   if (!el) return;
-  const nivel = (data.participantes.find(p => p.colegioId === currentCollegeId && p.anio === anio) || {}).nivel;
+  const _cMapTitle = {}; data.cursos.forEach(c => _cMapTitle[c.id] = c);
+  const _p0Title = data.participantes.find(p => p.colegioId === currentCollegeId && p.anio === anio);
+  const nivel = _p0Title ? nivelDe(_p0Title, _cMapTitle) : null;
   const partes = [nivel ? NIVEL_LABEL[nivel].replace(/^\S+\s/, '') : null, anio, grupo ? `Grupo ${grupo}` : null].filter(Boolean);
   el.textContent = partes.join(' · ') + (total ? ` · ${total} participante${total === 1 ? '' : 's'}` : '');
 }
@@ -2068,7 +2102,9 @@ function descargarPDFParticipantesColegio(btn) {
   setTimeout(() => {
     try {
       const col   = data.colegios.find(c => c.id === currentCollegeId) || { nombre: '-' };
-      const nivel = rows[0].nivel === 'media' ? 'Educaci\u00f3n Media' : 'Educaci\u00f3n Primaria';
+      const _cMapPdfInd = {}; data.cursos.forEach(c => _cMapPdfInd[c.id] = c);
+      const _nivelCode  = rows.length ? nivelDe(rows[0], _cMapPdfInd) : null;
+      const nivel = _nivelCode === 'media' ? 'Educaci\u00f3n Media' : _nivelCode === 'primaria' ? 'Educaci\u00f3n Primaria' : '';
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
       doc.setProperties({ title: _pdfClean(`${col.nombre} \u00b7 ${anio}`) });
@@ -2101,8 +2137,9 @@ function _actualizarNivelDownloadBlock(colegioId) {
   const btnPdf  = document.getElementById('cd-nivel-btn-pdf');
   if (!block || !sel) return;
   const mine        = data.participantes.filter(p => p.colegioId === colegioId);
-  const hasMedia    = mine.some(p => p.nivel === 'media');
-  const hasPrimaria = mine.some(p => p.nivel === 'primaria');
+  const _cMapNivel  = {}; data.cursos.forEach(c => _cMapNivel[c.id] = c);
+  const hasMedia    = mine.some(p => nivelDe(p, _cMapNivel) === 'media');
+  const hasPrimaria = mine.some(p => nivelDe(p, _cMapNivel) === 'primaria');
   if (!hasMedia && !hasPrimaria) { block.style.display = 'none'; return; }
   block.style.display = '';
   const prev = sel.value;
@@ -2141,7 +2178,8 @@ function descargarNivelXLSX(nivel) {
   if (typeof XLSX === 'undefined') { showToast('\u26a0 Falta la librer\u00eda XLSX'); return; }
   const col      = data.colegios.find(c => c.id === currentCollegeId) || { nombre: '-' };
   const nivelTxt = nivel === 'media' ? 'Educaci\u00f3n Media' : 'Educaci\u00f3n Primaria';
-  const mine  = data.participantes.filter(p => p.colegioId === currentCollegeId && p.nivel === nivel);
+  const _cMapXlsxNivel = {}; data.cursos.forEach(c => _cMapXlsxNivel[c.id] = c);
+  const mine  = data.participantes.filter(p => p.colegioId === currentCollegeId && nivelDe(p, _cMapXlsxNivel) === nivel);
   const anios = [...new Set(mine.map(p => p.anio))].sort((a, b) => extractAnioNum(a) - extractAnioNum(b));
   if (!anios.length) { showToast('Sin participantes en este nivel.'); return; }
   const COLS = ['usuario', 'clave', 'nombres', 'apellidos'];
@@ -2167,7 +2205,8 @@ function descargarNivelXLSX(nivel) {
 function descargarNivelPDF(nivel, btn) {
   if (!currentCollegeId) return;
   if (!window.jspdf || !window.jspdf.jsPDF) { showToast('\u26a0 Falta la librer\u00eda jsPDF'); return; }
-  const mine  = data.participantes.filter(p => p.colegioId === currentCollegeId && p.nivel === nivel);
+  const _cMapPdfNivel = {}; data.cursos.forEach(c => _cMapPdfNivel[c.id] = c);
+  const mine  = data.participantes.filter(p => p.colegioId === currentCollegeId && nivelDe(p, _cMapPdfNivel) === nivel);
   const anios = [...new Set(mine.map(p => p.anio))].sort((a, b) => extractAnioNum(a) - extractAnioNum(b));
   if (!anios.length) { showToast('Sin participantes en este nivel.'); return; }
   const label = btn ? btn.textContent : '';
