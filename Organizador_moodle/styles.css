@@ -653,6 +653,8 @@ body.dark #gen-preview-card .data-table td:last-child {
 }
 .gen-row-nuevo { background: var(--accent-light) !important; }
 .gen-row-nuevo:hover { filter: brightness(0.96); }
+.gen-row-editado { background: rgba(255, 170, 0, 0.14) !important; }
+.gen-row-editado:hover { filter: brightness(0.97); }
 .badge-nuevo {
   display: inline-block; font-size: 0.72rem; font-weight: 700;
   background: var(--accent); color: #fff; border-radius: 4px;

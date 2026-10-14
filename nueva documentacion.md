@@ -42,6 +42,79 @@ Los archivos `INSTRUCCION.md`, `INSTRUCCION_claude_code_generar_documentacion.md
 
 ---
 
+## Cambios — 2026-10-11 (pendientes de commit)
+
+### Corrección: editar nombre y apellido de un estudiante conservando su usuario (Generador de usuarios → Ver/Editar)
+
+**Archivos modificados:** `script.js` (v10→v11), `styles.css` (v5→v6), `index.html` (versiones actualizadas), `database/scripts/test_agregar_estudiantes.js`.
+
+**Caso de uso:** un estudiante se retira y su usuario (p. ej. `am158`) se reasigna a un estudiante nuevo. Hasta ahora, editar "Nombre completo"/"Apellidos" directamente en la tabla de la vista Ver/Editar (que siempre entra en modo agregar, ver §6.5) **no persistía el cambio**: `_guardarListaEnModoAgregar()` solo insertaba filas marcadas `esNuevo`, nunca actualizaba las filas ya existentes en `data.participantes`. El cambio se veía en pantalla hasta recargar o volver a abrir la lista, pero nunca se guardaba.
+
+**Bug adicional encontrado y corregido de paso:** el criterio anterior para decidir qué insertar (`r.esNuevo === true`) también incluía a los estudiantes añadidos en una sesión *anterior* de modo agregar (tienen `esNuevo: true` por el campo `agregadoEn`, pero ya existen en `data.participantes`). Pulsar "Guardar lista" sin generar nada nuevo los volvía a insertar como duplicados con un `id` nuevo. El nuevo criterio usa la presencia de `id` en la fila (ya persistida vs. recién generada en esta sesión) en vez de `esNuevo`, lo que elimina ese duplicado.
+
+**Corrección aplicada:**
+- `verEditarGenYear()` ahora incluye `id: p.id` en cada fila de `genPreviewRows` (dato en memoria, nunca se guarda ni viaja en el CSV ni en el respaldo — `GEN_COLS` sigue sin `id`).
+- `onGenFieldEdit()` enruta las columnas `firstname`/`lastname` a la nueva función `_aplicarEdicionNombre(i, field, valor)`, que:
+  - Si el usuario escribe el nombre **sin** el prefijo del username (p. ej. "JOSE ALEJANDRO"), lo añade automáticamente: `"am158 JOSE ALEJANDRO"`.
+  - Si ya lo escribe **con** el prefijo correcto, lo respeta tal cual.
+  - El prefijo de `firstname` nunca puede ser distinto al `username` de la fila (se vuelve a anteponer el username real, sin excepción).
+  - No cambia mayúsculas ni acentos; solo recorta espacios en los extremos.
+  - Nombre o apellido vacío (tras recortar espacios): muestra aviso en español (`showGenError`) y no se guarda ese cambio — el campo vuelve a su valor anterior.
+  - Estos dos campos se confirman con `onchange` (al salir del campo), no con `oninput` en cada tecla, para no pisarle el texto al usuario mientras escribe cuando borra el campo momentáneamente.
+- `_guardarListaEnModoAgregar()` reescrita: separa las filas de `genPreviewRows` en `existentes` (tienen `id`) y `nuevos` (no tienen `id` todavía). Para cada existente cuyo `nombres`/`apellidos` difiere de lo guardado, actualiza `data.participantes` en el sitio (mismo `id`, mismo `username`, mismo correo, misma posición) y cuenta un "actualizado". Los `nuevos` se insertan igual que antes (con `agregadoEn`). El toast final informa cuántos se agregaron y cuántos se actualizaron.
+- **Resaltado visual de filas editadas, sin persistir:** `genFilasOriginal` guarda una foto de `firstname`/`lastname` "como está guardado" al abrir Ver/Editar (`_capturarOriginalesGenPreview()`). Mientras el valor en pantalla difiera de esa foto, la fila recibe la clase CSS `.gen-row-editado` (fondo ámbar translúcido, `styles.css`); al guardar, la foto se vuelve a tomar y el resaltado desaparece. Es puramente visual — no se guarda ningún campo nuevo.
+- **Interacción con el modo agregar:** si se edita el nombre de una fila existente mientras la lista está en modo agregar, `_sincronizarFilaModoAgregar()` actualiza esa misma fila dentro de `genModoAgregarExistentes` y reconstruye las cajas de Apellidos/Nombres (`_sincronizarTextareasModoAgregar()`, por `id`, no por posición en el texto) conservando cualquier línea de estudiante nuevo que ya se haya escrito debajo. Así, la línea "antigua" de ese estudiante nunca queda desincronizada: al pulsar "Generar lista" se sigue reconociendo como existente y no genera un usuario duplicado. Ver prueba en `database/scripts/test_agregar_estudiantes.js` (Prueba 9).
+- **Eliminar un estudiante durante una edición de nombres:** `confirmarEliminarEstudiante()` ahora también quita la fila de `genModoAgregarExistentes` y de `genFilasOriginal` al eliminarla, para que esos registros auxiliares no queden con referencias a una fila que ya no existe.
+- **Carnets (Modo 1, listas manuales):** `data.carnetListas` guarda su propia copia de `nombres`/`apellidos` por `usuario` (independiente de `data.participantes`). Al guardar un cambio de nombre en el Generador de usuarios, `_sincronizarNombreEnCarnetListas()` actualiza también esas copias si el `usuario` coincide. Las listas del Modo 2 ("Desde participantes") no necesitan sincronización: leen `nombres`/`apellidos` en vivo desde `data.participantes` en el momento de generarse.
+
+**Lo que NO cambió (confirmado por lectura del código, no hubo que revertir nada porque no existía):** no había ningún botón "⬇ CSV solo de los modificados", ni campos `modificadoEn`/`anterior` en `data.participantes`, `database/schema.sql`, `respaldo_a_sql.js`, `sql_a_respaldo.js` ni `ejemplo_ficticio.json`. No se tocó la numeración, "Importar CSV", ni el comportamiento ya existente de "⬇ CSV solo de los nuevos" / `agregadoEn` (función distinta, del modo agregar, ver §6.5 — se deja intacta).
+
+**Lo que ya funcionaba y no se tocó:** el prefijo automático en `onGenUsernameEdit` (editar el username) ya recalculaba `firstname`/`email` correctamente; se le añadieron las mismas llamadas de resaltado/sincronización que a la edición de nombre, por consistencia, pero su lógica de recálculo no cambió. El CSV de la fila en "Años ya generados" (`descargarCSVGenYear`) y el CSV de la vista editable (`descargarCSVPreview`) ya leían los datos vigentes (de `data.participantes` o de `genPreviewRows`, respectivamente) — como la corrección ahora persiste los cambios de nombre en `data.participantes`, ambos CSV reflejan los nombres nuevos sin necesitar cambios propios.
+
+**No se pudo probar (requiere navegador):** la interacción real en el DOM (edición en la tabla, resaltado `.gen-row-editado`, confirmación `onchange`, sincronización en vivo de las cajas de texto). Se verificó con pruebas de lógica pura (sin DOM) en `database/scripts/test_agregar_estudiantes.js`, más `node --check` de los archivos modificados.
+
+**Secciones actualizadas en este documento:** §2 (versiones `?v=`, línea de `script.js`/`styles.css`), §6.3/§6.5 (reglas de guardado y modo agregar).
+
+---
+
+## Cambios — 2026-10-11b (pendientes de commit)
+
+### Nueva función: cambiar el sufijo de usuario de cualquier colegio (genérica, cualquier academia)
+
+**Caso que la motivó:** el colegio "Alejandro Humboldt" (academia Tecno) debería usar el sufijo `hum`, pero los usuarios de Media se crearon desde cero con `ah` (4 dígitos, `ah0001…`) mientras que los de Primaria, importados del CSV de Cleveland, ya usan `hum` (3 dígitos, `hum323`). La función no está atada a ese caso: funciona para cualquier colegio, cualquier sufijo viejo/nuevo y cualquier ancho de dígitos. Ver `cambiar_sufijo_colegio.md`.
+
+**Archivos modificados:** `script.js` (v11→v12), `index.html` (sin número de versión propio — es el shell), `database/scripts/test_cambiar_sufijo.js` (nuevo). `styles.css` no se tocó: no hizo falta ninguna clase nueva (se reutilizaron `.gen-error`, `.card-text`, `.form-field`, `.modal-actions`, `.acc-header`, `<code>`, los botones `.btn` existentes).
+
+**1. Dónde vivía el sufijo (investigación, confirmada leyendo el código):**
+- **El colegio (`data.colegios`) no tiene ningún campo de sufijo/siglas propio.** Solo guarda `{ id, nombre }` (`openCollegeModal`/`saveCollege`). El campo "Nombre corto" de cada curso copiado se autosugiere a partir de las iniciales del nombre del colegio (`slugifyInitials`) pero es editable a mano — así es como "Alejandro Humboldt" terminó con `ah` en vez de `hum` en algunos cursos.
+- **El sufijo real vive en dos sitios por separado, sin relación estructural entre ellos:** (a) el texto tras el último `-` de `asignacion.nombreCorto` (p. ej. `1styear-ah`) y, en mayúscula, al final de `asignacion.nombreCompleto` (`1er Año-AH`); (b) las letras iniciales del `username` de cada participante (`parseUsername`, regex `^([a-zA-Z]+)(\d+)$`).
+- **El generador detecta el prefijo del pool leyendo `nombreCorto` de la asignación elegida** (`generarListaUsuarios()`: `prefix = nombreCorto.slice(nombreCorto.lastIndexOf('-') + 1)`), nunca desde el colegio. Por eso cambiar el sufijo exige tocar la asignación (para que el generador detecte el prefijo nuevo) y los participantes ya creados (para que no queden con el prefijo viejo).
+- **`firstname` no es un campo guardado:** `data.participantes` solo guarda `nombres`/`apellidos`; el "Nombre completo" (`username + ' ' + nombres`) se reconstruye en cada lugar que lo necesita (CSV, Ver/Editar). Por eso renombrar `username` ya es suficiente — no hay un `firstname` guardado que sincronizar aparte.
+- **`course1`** sí se guarda literal en cada participante (copia del `nombreCorto` de su asignación al momento de generarse), así que se renombra en paralelo con el mismo reemplazo de sufijo.
+- **`carnetListas` (Modo 1, "Crear desde cero") no tiene `colegioId`:** son listas manuales por nivel/grado/sección con una copia de `usuario`/`clave`/`nombres`/`apellidos`, desconectadas de `data.participantes`. El Modo 2 ("Desde participantes") no se guarda en `data.carnetListas` — lee en vivo, así que no necesita nada.
+
+**2. Lógica pura agregada (`script.js`, sección "CAMBIAR SUFIJO DE COLEGIO", antes de "CURSOS MODELO"):**
+- `nivelesConDatos(colegioId)` y `detectarSufijosColegio(colegioId, niveles)`: detectan los niveles y sufijos existentes con sus conteos (participantes + cursos), para llenar los selectores del modal.
+- `validarSufijoNuevo(nuevo, viejo)`: solo letras y números, 2–10 caracteres, distinto del actual.
+- `construirPlanCambioSufijo({ colegioId, niveles, sufijoViejo, sufijoNuevo })`: función **pura** (no muta `data`) que calcula todo el plan — cursos copiados y participantes a renombrar (activos y de la Papelera), el mapeo para `carnetListas`, los choques exactos de username contra **toda la academia** (activos + Papelera, cualquier colegio) y los avisos de mismo número con distinto ancho de dígitos. El dígito y su ancho nunca cambian: se capturan tal cual del username viejo (`^sufijoViejo(\d+)$`, el grupo conserva los ceros a la izquierda) y se reusan en el nuevo.
+- `aplicarPlanCambioSufijo(plan)`: muta `data` aplicando el plan ya validado (lanza si `plan.bloqueado`). No llama a `saveData()` — eso lo decide el llamador, para que sea un solo guardado atómico.
+- `generarCSVRenombreMoodle(plan)`: construye el CSV de renombre (`oldusername` + las columnas normales de carga masiva de Moodle), solo con las filas activas (nunca de la Papelera) y leyendo los datos ya actualizados (se llama después de aplicar).
+
+**3. Interfaz:** botón "🔁 Cambiar sufijo" en el encabezado de cada sección "Cursos copiados · Media/Primaria" del detalle de colegio (visible siempre, no solo cuando hay un sufijo mal puesto). Abre `modal-cambiar-sufijo`: checkboxes de nivel (el de la sección donde se pulsó viene marcado, el otro opcional, solo se muestran los niveles que el colegio realmente tiene) → selector de sufijo actual con conteos → campo de sufijo nuevo → botón "Vista previa" (construye el plan y muestra resumen, ejemplos, avisos de ancho y, si hay choques, un aviso de bloqueo que deshabilita "Aplicar") → "Aplicar cambio" (confirma, descarga respaldo automático con `descargarRespaldoSilencioso('cambio-sufijo')`, aplica, guarda, refresca Colegios/Generador/Papelera/Carnets) → `modal-sufijo-resultado` con el resumen final, el botón único "⬇ Renombrar usuarios en Moodle (.csv)" y "↩ Revertir este cambio" (reabre el modal con el sufijo invertido, mismos niveles, para repetir vista previa + confirmación en sentido contrario — revertir no es automático, siempre pasa por la misma validación).
+
+**4. Decisiones tomadas (ninguna estaba especificada al 100% en el código existente):**
+- **Choque exacto → bloquea toda la operación** (no solo esa fila); **mismo número con distinto ancho → solo avisa**, siguiendo literalmente el ejemplo de `hum001` vs `hum0001` convivientes.
+- **`carnetListas` se enlazan solo por coincidencia exacta de `usuario`** (case-insensitive) contra los participantes que se están renombrando en esa misma operación, ya que no tienen `colegioId`. Solo se tocan en `data.carnetListas` (activas); las copias en `data.trash.carnetListas` no se tocan — si se restauran después, pueden traer el sufijo viejo (documentado en §11.10, riesgo aceptado).
+- **La Papelera sí se renombra** (`data.trash.asignaciones`, `data.trash.estudiantes[].participante`, `data.trash.participantes[].estudiantes[]`), para que restaurar algo más tarde no traiga de vuelta el sufijo viejo — a diferencia de otras operaciones de la app, que casi nunca toca la Papelera.
+- **Guarda "no aplicar dos veces seguidas" en memoria** (`sufUltimoAplicado`, un *fingerprint* de colegio+niveles+viejo+nuevo), no persistido — ver riesgo en §11.10.
+- **No se escribió ningún campo nuevo en `data`** ni en el esquema: todo se deriva de `nombreCorto`/`nombreCompleto`/`username`/`email`/`course1` ya existentes.
+
+**5. Verificación:** `database/scripts/test_cambiar_sufijo.js` (nuevo) replica la lógica pura de `construirPlanCambioSufijo`/`aplicarPlanCambioSufijo` con dos colegios ficticios (uno igual al caso real `ah→hum` con 4/3 dígitos, otro con sufijo y ancho distintos `xy12→zk12` en un solo nivel) y datos inventados — nunca datos reales. Cubre: conservación de dígito/ancho, correos y `course1` no generados que quedan intactos, detección de varios sufijos en un mismo nivel, choque exacto (incluso contra otro colegio) que bloquea sin cambiar nada, aviso de ancho distinto que no bloquea, aplicar dos veces no corrompe nada, revertir devuelve los datos originales, Tecno/Cleveland no se cruzan, generación posterior continúa con el prefijo nuevo, y que el CSV de renombre solo tiene las filas renombradas con `oldusername`. `node --check` pasa en `script.js`. **No se pudo probar la interacción real en el navegador** (checkboxes, selector en vivo, vista previa, modal de resultado) — ver §11.10.
+
+**Secciones actualizadas en este documento:** §2 (versión de `script.js`), §9 (guía "cómo se hace…", item j), §11.10 (riesgos nuevo).
+
+---
+
 ## Cambios — 2026-10-09c (pendientes de commit)
 
 ### Corrección: selector de Participantes y nivel en colegios afectados
@@ -366,11 +439,11 @@ Carpeta publicada en producción: `Organizador_moodle/`. Todo lo que está fuera
 | `sync-firebase.js` | 144 | Adaptador de Firebase. **Único archivo que llama a `firebase.*`.** Si el SDK no cargó, no hace nada (ver §9a). | se registra en `window.Sync._registrarAdaptador(...)` | SDK de Firebase (`lib/firebase-*-compat.min.js`), `firebase-config.js`, `sync.js` |
 | `firebase-config.js` | 44 | Configuración pública del proyecto Firebase (marcadores a rellenar). | `firebase.initializeApp(...)` | SDK de Firebase |
 | `index.html` | 977 | Shell de la app: sidebar (con el indicador de sincronización), las 8 vistas, 8 modales (incluidos los 3 de sincronización), carga de scripts. | — (solo markup + loader inline) | todos los `.js`/`.css` siguientes |
-| `script.js` | 2373 | Núcleo del organizador: datos, navegación, Colegios, Cursos modelo, Asignaciones, Generador de usuarios, Buscar, Respaldo (ahora con sincronización), Papelera. | `data`, `loadData/saveData`, `showView`, `esc/uid/normalize/slugify`, `renderRespaldoView/renderSyncStatus`, `ACADEMIA_ACTUAL` (de academias.js) | `academias.js`, `window.Sync` (opcional) |
+| `script.js` | 3087 | Núcleo del organizador: datos, navegación, Colegios, Cursos modelo, Asignaciones, Generador de usuarios, Buscar, Respaldo (ahora con sincronización), Papelera. | `data`, `loadData/saveData`, `showView`, `esc/uid/normalize/slugify`, `renderRespaldoView/renderSyncStatus`, `ACADEMIA_ACTUAL` (de academias.js) | `academias.js`, `window.Sync` (opcional) |
 | `carnets-pdf.js` | 179 | Motor de dibujo del carnet en PDF (jsPDF). IIFE aislado. | `window.CarnetsPDF = {buildPDF, gradeLabel, academias, levels, layouts}` | `lib/jspdf.umd.min.js` |
 | `carnets.js` | 702 | Vista "Generador de carnets" (los 2 modos + opciones de impresión). IIFE aislado. | `window.Carnets = {init, render, closePreview}` | `script.js` (datos y utilidades globales), `carnets-pdf.js`, `lib/jszip.min.js` |
 | `carnets.css` | 197 | Estilos de `#view-carnets`, todo con prefijo `.cn-`. | — | `styles.css` (variables) |
-| `styles.css` | 638 | Estilos de toda la app + modo oscuro + variables por academia. Incluye clases `.acc-*` (acordeón), `.pg-*` (paginación) y `.sync-status-bar` (indicador de nube). | — | — |
+| `styles.css` | 663 | Estilos de toda la app + modo oscuro + variables por academia. Incluye clases `.acc-*` (acordeón), `.pg-*` (paginación) y `.sync-status-bar` (indicador de nube). | — | — |
 | `lib/jspdf.umd.min.js` | 394 | jsPDF 2.5.2, vendored (sin CDN). | `window.jspdf` | — |
 | `lib/jszip.min.js` | 9 | JSZip 3.10.1, vendored. | `window.JSZip` | — |
 | `lib/xlsx.full.min.js` | 24 | SheetJS (xlsx), vendored. | `window.XLSX` | — |
@@ -389,7 +462,7 @@ academias.js?v=2  →  sync-core.js?v=1  →  sync.js?v=1
 ```
 `script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes que todo. `sync.js` también lee `ACADEMIA_ACTUAL` (para `STORAGE_KEY`/`ACADEMIA_ID`) y `SyncCore` (de `sync-core.js`), por eso va justo después. Los tres `<script>` del SDK de Firebase llevan `onerror` inline que solo deja un `console.info` — si no cargan (sin internet, bloqueados), el resto de la carga continúa sin lanzar errores. `firebase-config.js` y `sync-firebase.js` comprueban `typeof firebase !== 'undefined'` antes de usarlo; si no está, no registran ningún adaptador y `window.Sync` queda en modo solo local (ver §9a). `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting (estado actual):** `script.js?v=10`, `academias.js?v=2`, `styles.css?v=5`, `carnets.js?v=4`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
+**Cache-busting (estado actual):** `script.js?v=12`, `academias.js?v=2`, `styles.css?v=6`, `carnets.js?v=4`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propio login, su propio `script.js`, y un `firebase-config.js` (ese proyecto sí usa o usó Firebase real). No comparte nada de código con `Organizador_moodle/`.
 
@@ -749,6 +822,7 @@ En la vista editable (Ver/Editar) de una lista, cada fila tiene un botón 🗑 q
 - **Lista ya guardada** (`genPreviewSaved === true`, fijado por `verEditarGenYear` o `guardarListaUsuarios`): el estudiante se quita de `data.participantes`, va a `trash.estudiantes`, y los renombres se aplican tanto en `data.participantes` como en `genPreviewRows`.
 - **Lista recién generada** (`genPreviewSaved === false`): todo ocurre solo en `genPreviewRows` (nunca existió en `data`, por eso no pasa por Papelera).
 - Si se elimina el último estudiante de una lista guardada, la lista desaparece de "Años ya generados" y el editor se cierra.
+- Si la eliminación ocurre en modo agregar, también se quita la fila de `genModoAgregarExistentes` y de `genFilasOriginal` (estado auxiliar en memoria de §6.5a), para que no queden referencias a una fila ya eliminada.
 
 ### 6.5 Modo agregar estudiantes a una lista existente
 
@@ -770,12 +844,31 @@ Al pulsar **Ver/Editar** en "Años ya generados", el Generador entra en **modo a
 - El título de la tabla muestra "N existentes · M nuevos".
 
 **Al pulsar "Guardar lista" en modo agregar** (`_guardarListaEnModoAgregar()`):
-- Solo las filas con `esNuevo: true` se insertan en `data.participantes`, cada una con el campo `agregadoEn: new Date().toISOString()`.
+- Las filas de `genPreviewRows` se separan en **existentes** (tienen `id`, ya están en `data.participantes` — incluye tanto las de la lista original como las añadidas en una sesión anterior de modo agregar) y **nuevos** (no tienen `id` todavía, generados en esta sesión con "Generar lista").
+- Las filas **existentes** cuyo nombre/apellido en pantalla difiere de lo guardado actualizan `data.participantes` en el sitio (mismo `id`, `username`, correo y posición) — ver §6.5a.
+- Las filas **nuevas** se insertan en `data.participantes`, cada una con el campo `agregadoEn: new Date().toISOString()`.
 - **No** se mueve nada a la Papelera ni se crea una nueva lista.
+- Si no hay ninguna fila nueva ni ningún cambio de nombre pendiente, muestra "No hay cambios que guardar" y no hace nada (no llama a `saveData()`).
 - Se actualiza "Años ya generados" y la vista de Participantes del colegio.
-- El botón "⬇ CSV solo de los nuevos" (`#gen-csv-nuevos-btn`) queda visible.
+- El botón "⬇ CSV solo de los nuevos" (`#gen-csv-nuevos-btn`) queda visible si hay alguna fila con `esNuevo: true`.
 
 **Campo `agregadoEn`:** `string ISO 8601`, presente solo en participantes añadidos mediante el modo agregar. Al cargar una lista con Ver/Editar, los participantes con `agregadoEn` en `data.participantes` se marcan con `esNuevo: true` en `genPreviewRows`, lo que activa el badge y el botón "⬇ CSV solo de los nuevos".
+
+### 6.5a Editar nombre y apellido de un estudiante existente conservando su usuario
+
+En la tabla editable de Ver/Editar, las columnas "Nombre completo" y "Apellidos" de **cualquier** fila (existente o recién generada) son editables. Al salir del campo (`onchange`, no en cada tecla — para no pisarle el texto al usuario mientras escribe) se aplica `_aplicarEdicionNombre(i, field, valor)`:
+
+- **"Nombre completo" (firstname):** si el texto escrito ya empieza por `"<username> "`, se respeta tal cual; si no, se le antepone el `username` de la fila automáticamente. El prefijo nunca puede ser distinto al `username` real. Se guarda sin el prefijo en `nombres` (al persistir) y con el prefijo en `firstname` (en pantalla).
+- **"Apellidos" (lastname):** se guarda tal cual, solo recortando espacios en los extremos.
+- Ninguno de los dos cambia mayúsculas ni acentos.
+- Si el resultado queda vacío (tras recortar espacios), se muestra un aviso en español (`showGenError`) y el campo vuelve a su valor anterior — el cambio no se aplica.
+- El `username`, el dígito, el correo, la contraseña, ciudad, país, curso corto, grupo, rol, periodo y suspendido **no** se tocan por esta función (siguen siendo editables por separado, pero esos cambios a una fila ya guardada no se persisten al guardar — comportamiento preexistente, sin cambios).
+
+**Resaltado visual (sin persistir):** al entrar a Ver/Editar, `_capturarOriginalesGenPreview()` guarda una foto de `firstname`/`lastname` tal como están en `data.participantes` (`genFilasOriginal`, indexado por `id` de participante — nunca se guarda, es puramente un estado en memoria de la sesión). Mientras el valor en pantalla de una fila ya guardada difiera de esa foto, la fila recibe la clase CSS `.gen-row-editado` (fondo ámbar). Al pulsar "Guardar lista" con éxito, se vuelve a tomar la foto y el resaltado desaparece.
+
+**Persistencia al guardar:** `_guardarListaEnModoAgregar()` (ver arriba) localiza en `data.participantes` el registro con el mismo `id` que la fila editada y actualiza `nombres`/`apellidos`. El `username`, el correo, el `id` y la posición en el array no cambian. Si la fila tiene copias en `data.carnetListas` (listas manuales del Generador de carnets, Modo 1) con el mismo `usuario`, también se actualizan sus `nombres`/`apellidos` (`_sincronizarNombreEnCarnetListas`). Las listas de carnets del Modo 2 ("Desde participantes") no necesitan sincronización porque leen `nombres`/`apellidos` en vivo desde `data.participantes` al generarse.
+
+**Interacción con el modo agregar:** si la fila editada es una de las "existentes" de la sesión de modo agregar, `_sincronizarFilaModoAgregar()` actualiza esa misma entrada en `genModoAgregarExistentes` y reconstruye las cajas de Apellidos/Nombres por `id` (`_sincronizarTextareasModoAgregar()`), conservando cualquier línea de estudiante nuevo ya escrita debajo. Así, editar un nombre y luego pulsar "Generar lista" sigue reconociendo esa línea como existente (no cuenta como nuevo ni duplica usuario).
 
 **"Rango de usuarios" en "Años ya generados":** ahora usa `calcularRangos(rows)` en vez de `first – last`. Si los números son continuos, produce el mismo resultado de antes. Si son no continuos (por ejemplo lista con `ag0001–ag0014` a la que se agregaron `ag0086–ag0090`), muestra los tramos separados por comas: `ag0001–ag0014, ag0086–ag0090`.
 
@@ -944,6 +1037,13 @@ Ver `database/MIGRACION_A_SERVIDOR_PROPIO.md` para la guía completa. En resumen
 **i) Agregar una academia nueva que use la nube**
 Además de los pasos de (a): crear su cuenta de Firebase Authentication, agregar su documento `auth_map/{uid}` con el `academiaId` nuevo (consola de Firebase, nunca desde el cliente), y confirmar que `firestore.rules` no necesita cambios (la regla `estaAutorizadoParaAcademia()` ya es genérica por `academiaId`, no hay nada hardcodeado a `tecno`/`cleveland` ahí). Si se llega a implementar soporte multi-organización en la UI (no implementado hoy, ver §11), revisar también que no se haya colado un nuevo `=== 'tecno'` en `script.js` o `sync.js`.
 
+**j) Cambiar el sufijo de usuario de un colegio (p. ej. `ah` → `hum`)**
+1. En el detalle del colegio, en el encabezado de "Cursos copiados · Media" o "· Primaria", pulsa **🔁 Cambiar sufijo**.
+2. Marca los niveles a incluir (el de la sección donde se pulsó ya viene marcado) y elige el sufijo actual detectado en el selector (con sus conteos de cursos/participantes).
+3. Escribe el sufijo nuevo y pulsa **Vista previa**: revisa los conteos, los 3 ejemplos antes/después, los avisos de ancho de dígitos y, sobre todo, si aparece el aviso de choques (bloquea la operación).
+4. Pulsa **Aplicar cambio** y confirma. Se descarga un respaldo automático antes de aplicar.
+5. En el diálogo de resultado, descarga **⬇ Renombrar usuarios en Moodle (.csv)** si esos usuarios ya estaban cargados en Moodle — hay que renombrarlos allí a mano (la app no se comunica con Moodle). "↩ Revertir este cambio" reabre el modal con el sufijo invertido para repetir el flujo en sentido contrario.
+
 ---
 
 ## 10. Glosario
@@ -1017,6 +1117,15 @@ Hasta el commit `1ff425c`, `deleteManualList()` y "Eliminar todas las listas" qu
 - No se pudo determinar si el campo `notas` de las asignaciones se usa en algún punto de la UI más allá del modal de edición y el CSV de reporte (`exportReportCSV`). No aparece en ninguna tabla de la UI. Puede ser intencional (campo "solo para el reporte") o un olvido; no hay evidencia concluyente en el código.
 - **Fase 2 — no se pudo probar contra un proyecto Firebase real:** no hay credenciales de un proyecto Firebase en este entorno (y no correspondía inventarlas). `firebase-config.js` tiene marcadores; `sync-firebase.js` se verificó por lectura y porque su contrato (7 funciones) se probó exhaustivamente contra una "nube" falsa en memoria (`database/scripts/test_sync_dos_dispositivos.js`), pero nunca se ejecutó contra Firestore real ni se probaron las reglas con el emulador de Firebase. Los pasos manuales para verificarlo en producción están al final de este documento.
 - **Fase 2 — no se pudo ejecutar `database/schema.sql` contra un motor MySQL/MariaDB real** (no hay uno disponible en este entorno). Se verificó por lectura y, en su lugar, se probó un esquema estructuralmente equivalente en SQLite (`database/scripts/sqlite-schema.js`, con `node:sqlite`) con la prueba de ida y vuelta completa (`database/scripts/test_idavuelta.js`), incluido un caso con 5.000 participantes.
+
+### 11.10 Riesgos del cambio de sufijo de colegio (2026-10-11)
+- **Moodle no se entera:** renombrar en la app no renombra nada en Moodle. Si los usuarios/cursos ya existen allí, hay que usar el CSV "Renombrar usuarios en Moodle" (con `oldusername`) y la opción de Moodle que permite renombres en la carga masiva; los cursos copiados hay que renombrarlos allí a mano (la app no tiene esa integración).
+- **Convivencia de anchos de dígitos:** si el sufijo nuevo ya se usa en otro nivel del mismo colegio con un ancho de dígitos distinto (por ejemplo `hum0001` en Media y `hum001` en Primaria), la vista previa solo **avisa** (no bloquea) cuando el mismo número coincide con distinto ancho. La numeración nueva sigue generándose con el ancho fijo por nivel de `generarListaUsuarios()` (3 dígitos Primaria, 4 Media) — sin cambios en esa regla.
+- **`carnetListas` (Modo 1, manual) no tienen `colegioId`:** el enlace con el colegio se infiere únicamente por coincidencia exacta del `usuario` contra los participantes que sí se están renombrando en esta operación. Si dos colegios distintos comparten accidentalmente el mismo username (no debería pasar, pero no hay una restricción de esquema que lo impida), una carnetLista podría actualizarse por error. No se tocan las copias en `data.trash.carnetListas`: si el usuario restaura una lista de carnets de la Papelera después de un cambio de sufijo, puede traer usuarios con el sufijo viejo — queda fuera de alcance de esta función.
+- **El colegio no tiene un campo de sufijo/siglas propio:** se confirmó leyendo el código (`openCollegeModal`/`saveCollege`) que un colegio solo guarda `{ id, nombre }`. El sufijo vive exclusivamente en el nombre corto de cada curso copiado (`asignacion.nombreCorto`, todo lo que sigue al último `-`) y en los `username` de los participantes — no hay nada que "actualizar" a nivel colegio aparte de esos dos lugares.
+- **Guarda de "no aplicar dos veces seguidas"** es en memoria (`sufUltimoAplicado`), no se guarda en `data` ni sobrevive a recargar la página. Aplicar la misma operación otra vez tras recargar no está bloqueado, pero es inherentemente inofensivo: como el sufijo viejo ya no existe tras la primera aplicación, una segunda ejecución no encuentra coincidencias y no hace nada.
+- **Reversión asistida, no automática:** "↩ Revertir este cambio" vuelve a abrir el modal con el sufijo viejo/nuevo invertidos y los mismos niveles preseleccionados, pero exige pasar otra vez por "Vista previa" y "Aplicar" (con su propio respaldo automático y su propia detección de choques) — no hay un botón de un solo clic que deshaga sin revisión.
+- **No se pudo probar en navegador real:** la interacción del modal (checkboxes de nivel, selector de sufijos detectados, vista previa en vivo, confirmación, modal de resultado y la descarga del CSV) se verificó únicamente con pruebas de lógica pura en `database/scripts/test_cambiar_sufijo.js` y `node --check` de los archivos modificados.
 
 ---
 

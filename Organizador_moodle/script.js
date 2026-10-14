@@ -94,6 +94,7 @@ let genPreviewSaved = false; // true si las filas ya existen en data.participant
 let genEliminarCtx = null;   // { index } mientras el modal de eliminar estudiante está abierto
 let genModoAgregar = false;             // true mientras el Generador está en modo agregar
 let genModoAgregarExistentes = [];      // copia de genPreviewRows al entrar en modo agregar
+let genFilasOriginal = {};              // { [participanteId]: {firstname, lastname} } tal como está guardado — solo para resaltar ediciones sin persistir, nunca se guarda
 const GEN_COLS = ['username','password','firstname','lastname','email','city','country','course1','group1','role1','enrolperiod1','suspended'];
 
 /* ── UTILIDADES ── */
@@ -676,6 +677,471 @@ function deleteCollege(id) {
   updateTrashBadge();
   renderGenerador();
   showToast('Colegio movido a la papelera');
+}
+
+/* ════════════════════════════════════════════════════════════
+   CAMBIAR SUFIJO DE COLEGIO (ver cambiar_sufijo_colegio.md)
+   Las tres primeras funciones son lógica pura (no tocan el DOM, solo
+   leen/derivan de `data`): detección, construcción de plan y aplicación.
+   El resto es la interfaz del modal.
+   ════════════════════════════════════════════════════════════ */
+function _escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// Niveles ('media'/'primaria') con al menos un curso copiado o un participante en ese colegio.
+function nivelesConDatos(colegioId) {
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+  const niveles = new Set();
+  data.asignaciones.forEach(a => {
+    if (a.colegioId !== colegioId) return;
+    const n = (cursoMap[a.cursoId] || {}).nivel;
+    if (n) niveles.add(n);
+  });
+  data.participantes.forEach(p => {
+    if (p.colegioId !== colegioId) return;
+    const n = nivelDe(p, cursoMap);
+    if (n) niveles.add(n);
+  });
+  return ['media', 'primaria'].filter(n => niveles.has(n));
+}
+
+// Sufijos detectados en los niveles marcados de un colegio, con conteos de cursos
+// copiados y participantes. Se detectan a partir de los usernames (letras+números)
+// y del texto tras el último "-" del nombre corto de los cursos copiados.
+function detectarSufijosColegio(colegioId, niveles) {
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+  const nivelesSet = new Set(niveles);
+  const info = {};
+  const registrar = (sufijo, campo) => {
+    const key = String(sufijo).toLowerCase();
+    if (!info[key]) info[key] = { sufijo: key, participantes: 0, cursos: 0 };
+    info[key][campo]++;
+  };
+
+  data.asignaciones.forEach(a => {
+    if (a.colegioId !== colegioId) return;
+    const nivel = (cursoMap[a.cursoId] || {}).nivel;
+    if (!nivel || !nivelesSet.has(nivel)) return;
+    const corto = a.nombreCorto || '';
+    const lastDash = corto.lastIndexOf('-');
+    if (lastDash === -1 || lastDash === corto.length - 1) return;
+    registrar(corto.slice(lastDash + 1), 'cursos');
+  });
+
+  data.participantes.forEach(p => {
+    if (p.colegioId !== colegioId) return;
+    const nivel = nivelDe(p, cursoMap);
+    if (!nivel || !nivelesSet.has(nivel)) return;
+    const parsed = parseUsername(p.username);
+    if (!parsed) return;
+    registrar(parsed.prefix, 'participantes');
+  });
+
+  return Object.values(info).sort((a, b) => (b.participantes + b.cursos) - (a.participantes + a.cursos));
+}
+
+// Formato exigido para el sufijo nuevo: solo letras y números, 2 a 10 caracteres,
+// distinto del sufijo actual. Devuelve un mensaje de error en español, o null si es válido.
+function validarSufijoNuevo(sufijoNuevo, sufijoViejo) {
+  const v = String(sufijoNuevo || '').trim();
+  if (!v) return 'Escribe el sufijo nuevo.';
+  if (!/^[a-zA-Z0-9]{2,10}$/.test(v)) return 'El sufijo nuevo debe tener solo letras y números, de 2 a 10 caracteres.';
+  if (v.toLowerCase() === String(sufijoViejo || '').trim().toLowerCase()) return 'El sufijo nuevo debe ser distinto del actual.';
+  return null;
+}
+
+/**
+ * Construye el plan para cambiar `sufijoViejo` → `sufijoNuevo` en los niveles indicados
+ * de un colegio, SIN mutar `data`. No cambia dígitos ni su ancho (ah0007 → hum0007).
+ * Revisa cursos copiados y participantes activos y de la Papelera, y detecta choques
+ * de username contra TODA la academia (activos + Papelera, cualquier colegio).
+ */
+function construirPlanCambioSufijo({ colegioId, niveles, sufijoViejo, sufijoNuevo }) {
+  sufijoViejo = String(sufijoViejo || '').trim();
+  sufijoNuevo = String(sufijoNuevo || '').trim();
+  const cursoMap = {}; data.cursos.forEach(c => cursoMap[c.id] = c);
+  const nivelesSet = new Set(niveles);
+  const reUser = new RegExp('^' + _escapeRegExp(sufijoViejo) + '(\\d+)$', 'i');
+  const reDash = new RegExp('-' + _escapeRegExp(sufijoViejo) + '$', 'i');
+  const dominio = ACADEMIA_ACTUAL.emailDominio;
+
+  // ── Cursos copiados (activos y Papelera) ──
+  const cursos = [];
+  let cursosNoCoincidentes = 0;
+  const procesarAsig = (a, origen) => {
+    if (a.colegioId !== colegioId) return;
+    const nivel = (cursoMap[a.cursoId] || {}).nivel;
+    if (!nivel || !nivelesSet.has(nivel)) return;
+    const corto = a.nombreCorto || '';
+    if (!reDash.test(corto)) { cursosNoCoincidentes++; return; }
+    const completo = a.nombreCompleto || '';
+    const completoCoincide = reDash.test(completo);
+    cursos.push({
+      origen, id: a.id, anio: a.anio,
+      nombreCortoAnterior: corto, nombreCortoNuevo: corto.replace(reDash, '-' + sufijoNuevo.toLowerCase()),
+      nombreCompletoAnterior: completo,
+      nombreCompletoNuevo: completoCoincide ? completo.replace(reDash, '-' + sufijoNuevo.toUpperCase()) : completo,
+      completoCoincide
+    });
+  };
+  data.asignaciones.forEach(a => procesarAsig(a, 'activo'));
+  data.trash.asignaciones.forEach(a => procesarAsig(a, 'papelera'));
+
+  // ── Participantes (activos y Papelera) ──
+  const participantes = [];
+  let participantesNoCoincidentes = 0;
+  const procesarParticipante = (p, origen, refId) => {
+    if (!p || p.colegioId !== colegioId) return;
+    const nivel = nivelDe(p, cursoMap);
+    if (!nivel || !nivelesSet.has(nivel)) return;
+    const m = reUser.exec(String(p.username || '').trim());
+    if (!m) { participantesNoCoincidentes++; return; }
+    const digitos = m[1];
+    const usernameNuevo = sufijoNuevo.toLowerCase() + digitos;
+    const emailGenerado = `${p.username}@${dominio}`.toLowerCase();
+    const emailCoincide = String(p.email || '').toLowerCase() === emailGenerado;
+    const course1Coincide = reDash.test(p.course1 || '');
+    participantes.push({
+      origen, refId, id: p.id,
+      usernameAnterior: p.username, usernameNuevo,
+      emailAnterior: p.email, emailCoincide,
+      emailNuevo: emailCoincide ? `${usernameNuevo}@${dominio}` : p.email,
+      course1Anterior: p.course1, course1Coincide,
+      course1Nuevo: course1Coincide ? String(p.course1).replace(reDash, '-' + sufijoNuevo.toLowerCase()) : p.course1
+    });
+  };
+  data.participantes.forEach(p => procesarParticipante(p, 'activo', null));
+  data.trash.estudiantes.forEach(t => procesarParticipante(t.participante, 'papelera-individual', t.id));
+  data.trash.participantes.forEach(t => (t.estudiantes || []).forEach(p => procesarParticipante(p, 'papelera-lista', t.id)));
+
+  // ── Choques en toda la academia (activos + Papelera, cualquier colegio) ──
+  const idsEnPlan = new Set(participantes.map(x => x.id));
+  const ocupados = [];
+  const registrarOcupado = p => {
+    if (!p || idsEnPlan.has(p.id)) return;
+    ocupados.push({ username: p.username, parsed: parseUsername(p.username) });
+  };
+  data.participantes.forEach(registrarOcupado);
+  data.trash.estudiantes.forEach(t => registrarOcupado(t.participante));
+  data.trash.participantes.forEach(t => (t.estudiantes || []).forEach(registrarOcupado));
+
+  const ocupadosExactos = new Set(ocupados.map(o => String(o.username || '').toLowerCase()));
+  const choques = [];
+  const avisosAncho = [];
+  participantes.forEach(row => {
+    if (ocupadosExactos.has(row.usernameNuevo.toLowerCase())) {
+      choques.push({ usernameNuevo: row.usernameNuevo });
+      return;
+    }
+    const parsedNuevo = parseUsername(row.usernameNuevo);
+    if (!parsedNuevo) return;
+    const anchoDistinto = ocupados.find(o => o.parsed
+      && o.parsed.prefix.toLowerCase() === parsedNuevo.prefix.toLowerCase()
+      && o.parsed.num === parsedNuevo.num
+      && String(o.username).toLowerCase() !== row.usernameNuevo.toLowerCase());
+    if (anchoDistinto) avisosAncho.push({ usernameNuevo: row.usernameNuevo, usernameExistente: anchoDistinto.username });
+  });
+
+  // ── carnetListas (Modo 1, manual — no tienen colegioId; se enlazan por `usuario`) ──
+  const mapaUsernames = new Map(participantes.map(p => [p.usernameAnterior.toLowerCase(), p.usernameNuevo]));
+  const carnetListas = [];
+  (data.carnetListas || []).forEach(lista => {
+    (lista.estudiantes || []).forEach((est, i) => {
+      const nuevo = mapaUsernames.get(String(est.usuario || '').toLowerCase());
+      if (nuevo && nuevo.toLowerCase() !== String(est.usuario).toLowerCase()) {
+        carnetListas.push({ listaId: lista.id, index: i, usuarioAnterior: est.usuario, usuarioNuevo: nuevo });
+      }
+    });
+  });
+
+  return {
+    colegioId, niveles: [...niveles], sufijoViejo, sufijoNuevo,
+    cursos, participantes, carnetListas,
+    choques, avisosAncho,
+    cursosNoCoincidentes, participantesNoCoincidentes,
+    ejemplosUsuarios: participantes.slice(0, 3).map(p => ({ antes: p.usernameAnterior, despues: p.usernameNuevo })),
+    ejemplosCursos: cursos.filter(c => c.origen === 'activo').slice(0, 3).map(c => ({ antes: c.nombreCortoAnterior, despues: c.nombreCortoNuevo })),
+    bloqueado: choques.length > 0,
+    resumen: {
+      cursosActivos: cursos.filter(c => c.origen === 'activo').length,
+      cursosPapelera: cursos.filter(c => c.origen === 'papelera').length,
+      participantesActivos: participantes.filter(p => p.origen === 'activo').length,
+      participantesPapelera: participantes.filter(p => p.origen !== 'activo').length,
+      carnets: carnetListas.length
+    }
+  };
+}
+
+/**
+ * Aplica un plan ya construido (sin choques) mutando `data`. No llama a saveData():
+ * el llamador decide cuándo persistir (un solo saveData() al final, nada si algo falla).
+ */
+function aplicarPlanCambioSufijo(plan) {
+  if (plan.bloqueado) throw new Error('No se puede aplicar un plan con choques de usuario.');
+
+  const asigPorId = {}; data.asignaciones.forEach(a => asigPorId[a.id] = a);
+  const trashAsigPorId = {}; data.trash.asignaciones.forEach(a => trashAsigPorId[a.id] = a);
+  plan.cursos.forEach(c => {
+    const a = c.origen === 'activo' ? asigPorId[c.id] : trashAsigPorId[c.id];
+    if (!a) return;
+    a.nombreCorto = c.nombreCortoNuevo;
+    a.nombreCompleto = c.nombreCompletoNuevo;
+  });
+
+  const partPorId = {}; data.participantes.forEach(p => partPorId[p.id] = p);
+  const trashEstPorId = {}; data.trash.estudiantes.forEach(t => trashEstPorId[t.id] = t);
+  const trashListaPorId = {}; data.trash.participantes.forEach(t => trashListaPorId[t.id] = t);
+
+  plan.participantes.forEach(row => {
+    let p = null;
+    if (row.origen === 'activo') p = partPorId[row.id];
+    else if (row.origen === 'papelera-individual') p = (trashEstPorId[row.refId] || {}).participante;
+    else if (row.origen === 'papelera-lista') {
+      const lista = trashListaPorId[row.refId];
+      p = lista ? (lista.estudiantes || []).find(e => e.id === row.id) : null;
+    }
+    if (!p) return;
+    p.username = row.usernameNuevo;
+    if (row.emailCoincide) p.email = row.emailNuevo;
+    if (row.course1Coincide) p.course1 = row.course1Nuevo;
+  });
+
+  const carnetListaPorId = {}; (data.carnetListas || []).forEach(l => carnetListaPorId[l.id] = l);
+  plan.carnetListas.forEach(c => {
+    const lista = carnetListaPorId[c.listaId];
+    const est = lista && lista.estudiantes[c.index];
+    if (est && String(est.usuario || '').toLowerCase() === String(c.usuarioAnterior).toLowerCase()) {
+      est.usuario = c.usuarioNuevo;
+    }
+  });
+
+  return { cursos: plan.cursos.length, participantes: plan.participantes.length, carnets: plan.carnetListas.length };
+}
+
+// CSV de renombre para Moodle: filas renombradas (solo activas, nunca Papelera) con
+// `oldusername` al inicio, en el mismo formato de carga masiva que buildUsuariosCSV().
+// Debe llamarse DESPUÉS de aplicarPlanCambioSufijo() para leer los datos ya actualizados.
+function generarCSVRenombreMoodle(plan) {
+  const activos = plan.participantes.filter(p => p.origen === 'activo');
+  const partPorId = {}; data.participantes.forEach(p => partPorId[p.id] = p);
+  const header = 'oldusername,username,password,firstname,lastname,email,city,country,course1,group1,role1,enrolperiod1,suspended';
+  const lines = activos.map(row => {
+    const p = partPorId[row.id];
+    if (!p) return null;
+    return [row.usernameAnterior, p.username, p.password, `${p.username} ${p.nombres}`, p.apellidos,
+      p.email, p.city, p.country, p.course1, p.group1, p.role1, p.enrolperiod1, p.suspended]
+      .map(v => v ?? '').join(',');
+  }).filter(Boolean);
+  return [header, ...lines].join('\n');
+}
+
+/* ── Interfaz del modal "Cambiar sufijo" ── */
+let sufModal = null;          // { colegioId, nivelesDisponibles } mientras el modal está abierto
+let sufPlanActual = null;     // plan vigente para el formulario actual (null si hay que regenerar la vista previa)
+let sufUltimoAplicado = null; // fingerprint del último cambio aplicado con éxito (evita repetirlo dos veces seguidas)
+let sufResultadoCtx = null;   // { plan, resumen } mientras el modal de resultado está abierto (para el CSV)
+
+function _fingerprintSufijo(colegioId, niveles, viejo, nuevo) {
+  return [colegioId, [...niveles].sort().join('+'), String(viejo).toLowerCase(), String(nuevo).toLowerCase()].join('|');
+}
+
+// Hay cambios sin guardar en el Generador de usuarios de ese colegio: lista recién
+// generada sin guardar, nombres editados sin guardar, o líneas pendientes en modo agregar.
+function _hayCambiosSinGuardarGenerador(colegioId) {
+  if (genColegioId !== colegioId) return false;
+  if (!genPreviewRows.length) return false;
+  if (!genPreviewSaved) return true;
+  const algunaEditada = genPreviewRows.some(r => {
+    const orig = genFilasOriginal[r.id];
+    return orig && (r.firstname !== orig.firstname || r.lastname !== orig.lastname);
+  });
+  if (algunaEditada) return true;
+  if (genModoAgregar) {
+    const apTxt = (document.getElementById('gen-apellidos') || {}).value || '';
+    const noTxt = (document.getElementById('gen-nombres') || {}).value || '';
+    if (apTxt.trim() || noTxt.trim()) return true;
+  }
+  return false;
+}
+
+function sufNivelesMarcados() {
+  const niveles = [];
+  if (document.getElementById('suf-nivel-media').checked) niveles.push('media');
+  if (document.getElementById('suf-nivel-primaria').checked) niveles.push('primaria');
+  return niveles;
+}
+
+function showSufError(msg) { const b = document.getElementById('suf-error'); b.textContent = msg; b.style.display = ''; }
+function hideSufError() { document.getElementById('suf-error').style.display = 'none'; }
+
+function abrirCambiarSufijoModal(colegioId, nivelInicial) {
+  if (_hayCambiosSinGuardarGenerador(colegioId)) {
+    showToast('Hay cambios sin guardar en el Generador de usuarios de este colegio. Guarda o descarta esos cambios antes de cambiar el sufijo.');
+    return;
+  }
+  const niveles = nivelesConDatos(colegioId);
+  if (!niveles.length) { showToast('Este colegio no tiene cursos copiados ni participantes todavía.'); return; }
+
+  sufModal = { colegioId, nivelesDisponibles: niveles };
+  sufPlanActual = null;
+
+  const mediaDisp = niveles.includes('media');
+  const primariaDisp = niveles.includes('primaria');
+  document.getElementById('suf-nivel-media-wrap').style.display = mediaDisp ? '' : 'none';
+  document.getElementById('suf-nivel-primaria-wrap').style.display = primariaDisp ? '' : 'none';
+  document.getElementById('suf-nivel-media').checked = mediaDisp && nivelInicial === 'media';
+  document.getElementById('suf-nivel-primaria').checked = primariaDisp && nivelInicial === 'primaria';
+
+  document.getElementById('suf-nuevo').value = '';
+  document.getElementById('suf-preview').style.display = 'none';
+  document.getElementById('suf-aplicar-btn').disabled = true;
+  hideSufError();
+
+  onSufNivelesChange();
+  document.getElementById('modal-cambiar-sufijo').classList.add('active');
+}
+
+function onSufFormChanged() {
+  hideSufError();
+  document.getElementById('suf-preview').style.display = 'none';
+  document.getElementById('suf-aplicar-btn').disabled = true;
+  sufPlanActual = null;
+}
+
+function onSufNivelesChange() {
+  onSufFormChanged();
+  const niveles = sufNivelesMarcados();
+  const sel = document.getElementById('suf-viejo');
+  if (!niveles.length) {
+    sel.innerHTML = '<option value="">Marca al menos un nivel</option>';
+    sel.disabled = true;
+    return;
+  }
+  const detectados = detectarSufijosColegio(sufModal.colegioId, niveles);
+  if (!detectados.length) {
+    sel.innerHTML = '<option value="">Sin sufijos detectados en estos niveles</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = detectados.map(d =>
+    `<option value="${esc(d.sufijo)}">${esc(d.sufijo)} (${d.participantes} participante${d.participantes !== 1 ? 's' : ''} · ${d.cursos} curso${d.cursos !== 1 ? 's' : ''})</option>`
+  ).join('');
+  if (detectados.length === 1) sel.value = detectados[0].sufijo;
+}
+
+function generarVistaPreviaSufijo() {
+  hideSufError();
+  const niveles = sufNivelesMarcados();
+  if (!niveles.length) { showSufError('Marca al menos un nivel.'); return; }
+  const sufijoViejo = document.getElementById('suf-viejo').value;
+  if (!sufijoViejo) { showSufError('Elige el sufijo actual a reemplazar.'); return; }
+  const sufijoNuevo = document.getElementById('suf-nuevo').value.trim();
+  const err = validarSufijoNuevo(sufijoNuevo, sufijoViejo);
+  if (err) { showSufError(err); return; }
+
+  const plan = construirPlanCambioSufijo({ colegioId: sufModal.colegioId, niveles, sufijoViejo, sufijoNuevo });
+  sufPlanActual = plan;
+  renderVistaPreviaSufijo(plan);
+}
+
+function renderVistaPreviaSufijo(plan) {
+  document.getElementById('suf-preview').style.display = '';
+  const r = plan.resumen;
+
+  let html = `<div class="card-text"><b>${r.cursosActivos}</b> curso(s) copiado(s) y <b>${r.participantesActivos}</b> participante(s) se renombrarán`;
+  if (r.participantesPapelera || r.cursosPapelera) html += ` (además de ${r.cursosPapelera} curso(s) y ${r.participantesPapelera} participante(s) en la Papelera)`;
+  if (r.carnets) html += `, y ${r.carnets} usuario(s) copiado(s) en listas de carnets`;
+  html += '.</div>';
+
+  const ejemplos = plan.ejemplosUsuarios.map(e => `${esc(e.antes)} → ${esc(e.despues)}`)
+    .concat(plan.ejemplosCursos.map(e => `<code>${esc(e.antes)}</code> → <code>${esc(e.despues)}</code>`));
+  if (ejemplos.length) html += `<div class="card-text" style="margin-top:8px">Ejemplos: ${ejemplos.slice(0, 3).join(' · ')}</div>`;
+
+  if (plan.cursosNoCoincidentes || plan.participantesNoCoincidentes) {
+    html += `<div class="card-text" style="margin-top:8px;color:var(--text-muted)">No coinciden con el patrón y no se tocan: ${plan.cursosNoCoincidentes} curso(s), ${plan.participantesNoCoincidentes} participante(s).</div>`;
+  }
+  if (plan.avisosAncho.length) {
+    html += `<div class="card-text" style="margin-top:8px;color:var(--text-muted)">⚠ ${plan.avisosAncho.length} usuario(s) nuevo(s) coinciden en número con otro ya existente pero con distinto ancho de dígitos (por ejemplo, convivencia con otra fuente de datos). No se bloquea, pero revísalo.</div>`;
+  }
+  document.getElementById('suf-preview-body').innerHTML = html;
+
+  const aplicarBtn = document.getElementById('suf-aplicar-btn');
+  const choquesBox = document.getElementById('suf-choques-box');
+  if (plan.choques.length) {
+    choquesBox.style.display = '';
+    choquesBox.textContent = `⛔ Bloqueado: ${plan.choques.length} usuario(s) resultante(s) ya existen en la academia (${plan.choques.slice(0, 5).map(c => c.usernameNuevo).join(', ')}${plan.choques.length > 5 ? '…' : ''}).`;
+    aplicarBtn.disabled = true;
+  } else {
+    choquesBox.style.display = 'none';
+    aplicarBtn.disabled = false;
+  }
+}
+
+function confirmarCambioSufijo() {
+  if (!sufPlanActual || sufPlanActual.bloqueado) return;
+  const plan = sufPlanActual;
+  const fp = _fingerprintSufijo(plan.colegioId, plan.niveles, plan.sufijoViejo, plan.sufijoNuevo);
+  if (sufUltimoAplicado === fp) {
+    showToast('Ya aplicaste este mismo cambio. Elige otro sufijo o nivel para repetirlo.');
+    return;
+  }
+  if (!confirm(`¿Cambiar el sufijo "${plan.sufijoViejo}" a "${plan.sufijoNuevo}" en ${plan.resumen.cursosActivos} curso(s) y ${plan.resumen.participantesActivos} participante(s) de este colegio? Se descargará un respaldo antes de aplicar.`)) return;
+
+  descargarRespaldoSilencioso('cambio-sufijo');
+  const resumen = aplicarPlanCambioSufijo(plan);
+  saveData();
+  sufUltimoAplicado = fp;
+
+  closeModal('modal-cambiar-sufijo');
+  renderColegios();
+  if (currentCollegeId === plan.colegioId) renderCollegeDetail();
+  renderGenerador();
+  renderTrash();
+  updateTrashBadge();
+  if (window.Carnets && typeof window.Carnets.render === 'function') window.Carnets.render();
+
+  sufResultadoCtx = { plan, resumen };
+  mostrarResultadoSufijo();
+}
+
+function mostrarResultadoSufijo() {
+  const { plan, resumen } = sufResultadoCtx;
+  let texto = `Se actualizaron <b>${resumen.cursos}</b> curso(s) copiado(s) y <b>${resumen.participantes}</b> participante(s) ` +
+    `(sufijo "${esc(plan.sufijoViejo)}" → "${esc(plan.sufijoNuevo)}")`;
+  texto += resumen.carnets ? `, además de ${resumen.carnets} usuario(s) en listas de carnets.` : '.';
+  if (plan.cursosNoCoincidentes || plan.participantesNoCoincidentes) {
+    texto += ` No se tocaron ${plan.cursosNoCoincidentes} curso(s) y ${plan.participantesNoCoincidentes} participante(s) que no coincidían con el patrón.`;
+  }
+  document.getElementById('suf-resultado-texto').innerHTML = texto;
+  document.getElementById('modal-sufijo-resultado').classList.add('active');
+}
+
+function descargarCSVRenombreSufijo() {
+  if (!sufResultadoCtx) return;
+  const { plan } = sufResultadoCtx;
+  const csv = generarCSVRenombreMoodle(plan);
+  downloadFile(csv, `renombrar_moodle_${plan.sufijoViejo}_a_${plan.sufijoNuevo}_${todayStr()}.csv`, 'text/csv;charset=utf-8;');
+  showToast('CSV de renombre descargado ✓');
+}
+
+// Reabre el modal con los mismos niveles y el cambio invertido (nuevo → viejo), para
+// que el usuario repita el flujo de vista previa + confirmación en sentido contrario.
+function prepararReversionSufijo() {
+  if (!sufResultadoCtx) return;
+  const { plan } = sufResultadoCtx;
+  cerrarResultadoSufijo();
+  abrirCambiarSufijoModal(plan.colegioId, plan.niveles[0]);
+  plan.niveles.forEach(n => { const el = document.getElementById(`suf-nivel-${n}`); if (el) el.checked = true; });
+  onSufNivelesChange();
+  const sel = document.getElementById('suf-viejo');
+  if ([...sel.options].some(o => o.value === plan.sufijoNuevo)) sel.value = plan.sufijoNuevo;
+  document.getElementById('suf-nuevo').value = plan.sufijoViejo;
+  showToast('Revertir: pulsa "Vista previa" para confirmar el cambio inverso.');
+}
+
+function cerrarResultadoSufijo() {
+  closeModal('modal-sufijo-resultado');
+  sufResultadoCtx = null;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1305,12 +1771,19 @@ function renderGenPreviewTable() {
   const body = document.getElementById('gen-preview-body');
   body.innerHTML = genPreviewRows.map((r, i) => {
     const esNuevo = r.esNuevo === true;
-    const rowClass = esNuevo ? ' class="gen-row-nuevo"' : '';
-    return `<tr${rowClass}>` + GEN_COLS.map(col => {
+    const orig = genFilasOriginal[r.id];
+    const editado = !!orig && (r.firstname !== orig.firstname || r.lastname !== orig.lastname);
+    const classes = [esNuevo && 'gen-row-nuevo', editado && 'gen-row-editado'].filter(Boolean);
+    const rowClass = classes.length ? ` class="${classes.join(' ')}"` : '';
+    return `<tr id="gp-row-${i}"${rowClass}>` + GEN_COLS.map(col => {
       const id = `gp-${col}-${i}`;
+      // firstname/lastname validan y normalizan el prefijo del usuario: se confirman al salir del
+      // campo (onchange), no en cada tecla, para no pisarle al usuario el texto mientras escribe.
       const handler = col === 'username'
         ? `onchange="onGenUsernameEdit(${i}, this.value)"`
-        : `oninput="onGenFieldEdit(${i}, '${col}', this.value)"`;
+        : (col === 'firstname' || col === 'lastname')
+          ? `onchange="onGenFieldEdit(${i}, '${col}', this.value)"`
+          : `oninput="onGenFieldEdit(${i}, '${col}', this.value)"`;
       let cellHtml = `<input class="table-input" id="${id}" value="${esc(r[col])}" ${handler}>`;
       if (col === 'username' && esNuevo) {
         cellHtml = `<span class="badge-nuevo" aria-label="Estudiante nuevo">Nuevo</span>${cellHtml}`;
@@ -1342,7 +1815,92 @@ function renderGenPreviewTitle() {
 
 function onGenFieldEdit(i, field, value) {
   if (!genPreviewRows[i]) return;
+  if (field === 'firstname' || field === 'lastname') {
+    _aplicarEdicionNombre(i, field, value);
+    return;
+  }
   genPreviewRows[i][field] = value;
+}
+
+// Edición de "Nombre completo" (firstname) y "Apellidos" (lastname) en la vista editable.
+// Reglas: el prefijo de firstname nunca puede diferir del username; nombre/apellido vacío no se guarda.
+function _aplicarEdicionNombre(i, field, rawValue) {
+  const row = genPreviewRows[i];
+  if (!row) return;
+  const value = rawValue.trim();
+  const inputEl = document.getElementById(`gp-${field}-${i}`);
+
+  if (field === 'lastname') {
+    if (!value) {
+      showGenError('El apellido no puede quedar vacío.');
+      if (inputEl) inputEl.value = row.lastname;
+      return;
+    }
+    row.lastname = value;
+  } else {
+    const username = row.username || '';
+    const prefix = username + ' ';
+    const nombres = value.startsWith(prefix) ? value.slice(prefix.length).trim() : value;
+    if (!nombres) {
+      showGenError('El nombre no puede quedar vacío.');
+      if (inputEl) inputEl.value = row.firstname;
+      return;
+    }
+    row.firstname = username ? `${username} ${nombres}` : nombres;
+    if (inputEl) inputEl.value = row.firstname;
+  }
+
+  hideGenError();
+  _marcarFilaEditada(i);
+  _sincronizarFilaModoAgregar(row);
+}
+
+// Resalta visualmente (sin persistir) una fila ya guardada cuyo nombre/apellido difiere de lo que hay en data.participantes.
+function _marcarFilaEditada(i) {
+  const row = genPreviewRows[i];
+  if (!row || !row.id) return;
+  const orig = genFilasOriginal[row.id];
+  if (!orig) return;
+  const cambiado = row.firstname !== orig.firstname || row.lastname !== orig.lastname;
+  const tr = document.getElementById(`gp-row-${i}`);
+  if (tr) tr.classList.toggle('gen-row-editado', cambiado);
+}
+
+// Snapshot de firstname/lastname "como está guardado" para detectar ediciones sin persistir (solo resaltado visual).
+function _capturarOriginalesGenPreview() {
+  genFilasOriginal = {};
+  genPreviewRows.forEach(r => {
+    if (r.id) genFilasOriginal[r.id] = { firstname: r.firstname, lastname: r.lastname };
+  });
+}
+
+// Si la fila editada es una de las "existentes" del modo agregar, mantiene en sincronía su copia en
+// genModoAgregarExistentes y las cajas de Apellidos/Nombres, para que una edición de nombre no se
+// cuente como estudiante nuevo (ni se pierda) al pulsar "Generar lista".
+function _sincronizarFilaModoAgregar(row) {
+  if (!genModoAgregar || !row.id) return;
+  const idx = genModoAgregarExistentes.findIndex(r => r.id === row.id);
+  if (idx === -1) return;
+  genModoAgregarExistentes[idx] = { ...row };
+  _sincronizarTextareasModoAgregar();
+}
+
+// Reconstruye las cajas de Apellidos/Nombres a partir de genModoAgregarExistentes, conservando
+// cualquier línea de estudiante nuevo que el usuario ya haya escrito debajo del bloque de existentes.
+function _sincronizarTextareasModoAgregar() {
+  const apTa = document.getElementById('gen-apellidos');
+  const noTa = document.getElementById('gen-nombres');
+  if (!apTa || !noTa) return;
+  const nExist = genModoAgregarExistentes.length;
+  const apExtra = parseLines(apTa.value).slice(nExist);
+  const noExtra = parseLines(noTa.value).slice(nExist);
+  const apBase = genModoAgregarExistentes.map(r => r.lastname || '');
+  const noBase = genModoAgregarExistentes.map(r =>
+    (r.username && r.firstname.startsWith(r.username + ' ')) ? r.firstname.slice(r.username.length + 1) : (r.firstname || '')
+  );
+  apTa.value = [...apBase, ...apExtra].join('\n');
+  noTa.value = [...noBase, ...noExtra].join('\n');
+  actualizarContadorModoAgregar();
 }
 
 function onGenUsernameEdit(i, value) {
@@ -1361,6 +1919,8 @@ function onGenUsernameEdit(i, value) {
   const emInput = document.getElementById(`gp-email-${i}`);
   if (fnInput) fnInput.value = row.firstname;
   if (emInput) emInput.value = row.email;
+  _marcarFilaEditada(i);
+  _sincronizarFilaModoAgregar(row);
 }
 
 function _generarListaEnModoAgregar(prefix) {
@@ -1454,17 +2014,51 @@ function _generarListaEnModoAgregar(prefix) {
   hideGenError();
 }
 
+// Actualiza las copias de nombres/apellidos guardadas en las listas manuales de carnets (Modo 1)
+// cuyo "usuario" coincida, para que no queden desactualizadas tras un cambio de nombre.
+function _sincronizarNombreEnCarnetListas(username, nombres, apellidos) {
+  (data.carnetListas || []).forEach(lista => {
+    (lista.estudiantes || []).forEach(est => {
+      if (est.usuario === username) {
+        est.nombres = nombres;
+        est.apellidos = apellidos;
+      }
+    });
+  });
+}
+
 function _guardarListaEnModoAgregar() {
-  const nuevos = genPreviewRows.filter(r => r.esNuevo);
-  if (!nuevos.length) { showToast('No hay estudiantes nuevos que agregar'); return; }
+  // "Existentes" = filas que ya tienen id en data.participantes (incluye las añadidas en una sesión
+  // anterior de modo agregar). "Nuevos" = filas generadas en esta sesión que todavía no tienen id.
+  const existentes = genPreviewRows.filter(r => r.id);
+  const nuevos = genPreviewRows.filter(r => !r.id);
+
   const { colegioId, cursoId, anio, nivel } = genPreviewCtx;
+  let actualizados = 0;
+
+  existentes.forEach(r => {
+    const p = data.participantes.find(x => x.id === r.id);
+    if (!p) return;
+    let nombres = r.firstname;
+    if (r.username && r.firstname.startsWith(r.username + ' ')) nombres = r.firstname.slice(r.username.length + 1);
+    if (p.nombres !== nombres || p.apellidos !== r.lastname) {
+      p.nombres = nombres;
+      p.apellidos = r.lastname;
+      _sincronizarNombreEnCarnetListas(p.username, nombres, r.lastname);
+      actualizados++;
+    }
+  });
+
+  if (!nuevos.length && !actualizados) { showToast('No hay cambios que guardar'); return; }
+
   const fecha = todayStr();
   const agregadoEn = new Date().toISOString();
   nuevos.forEach(r => {
     let nombres = r.firstname;
     if (r.username && r.firstname.startsWith(r.username + ' ')) nombres = r.firstname.slice(r.username.length + 1);
+    const nuevoId = uid();
     data.participantes.push({
-      id: uid(), colegioId, cursoId, anio, nivel,
+      id: nuevoId, colegioId, cursoId, anio, nivel,
       username: r.username, password: r.password,
       nombres, apellidos: r.lastname,
       email: r.email, city: r.city, country: r.country,
@@ -1472,15 +2066,24 @@ function _guardarListaEnModoAgregar() {
       enrolperiod1: r.enrolperiod1, suspended: r.suspended,
       fecha, agregadoEn
     });
+    r.id = nuevoId;
   });
+
   saveData();
   genPreviewSaved = true;
-  const n = nuevos.length;
-  showToast(`${n} estudiante${n !== 1 ? 's' : ''} nuevo${n !== 1 ? 's' : ''} agregado${n !== 1 ? 's' : ''} ✓`);
+  genModoAgregarExistentes = genPreviewRows.map(r => ({ ...r }));
+  _capturarOriginalesGenPreview();
+  document.querySelectorAll('#gen-preview-body tr.gen-row-editado').forEach(tr => tr.classList.remove('gen-row-editado'));
+
+  const partes = [];
+  if (nuevos.length) partes.push(`${nuevos.length} nuevo${nuevos.length !== 1 ? 's' : ''}`);
+  if (actualizados) partes.push(`${actualizados} actualizado${actualizados !== 1 ? 's' : ''}`);
+  showToast(`Guardado ✓ — ${partes.join(' · ')}`);
+
   renderGenYearsSummary();
   renderGenPreviewTitle();
   if (currentCollegeId === colegioId) renderCollegeParticipantes(colegioId);
-  document.getElementById('gen-csv-nuevos-btn').style.display = '';
+  if (genPreviewRows.some(r => r.esNuevo)) document.getElementById('gen-csv-nuevos-btn').style.display = '';
 }
 
 function guardarListaUsuarios() {
@@ -1650,6 +2253,7 @@ function verEditarGenYear(anio, grupo) {
   if (!genAsig) { showToast('No se encontró la asignación de este año'); return; }
 
   genPreviewRows = rows.map(p => ({
+    id: p.id,
     username: p.username, password: p.password,
     firstname: `${p.username} ${p.nombres}`,
     lastname: p.apellidos, email: p.email,
@@ -1661,6 +2265,7 @@ function verEditarGenYear(anio, grupo) {
   const nivelCtx = rows[0].nivel || (data.cursos.find(c => c.id === cursoIdCtx) || {}).nivel;
   genPreviewCtx = { colegioId: genColegioId, cursoId: cursoIdCtx, anio, nivel: nivelCtx, group1: grupo };
   genPreviewSaved = true;
+  _capturarOriginalesGenPreview();
   renderGenPreviewTable();
   const card = document.getElementById('gen-preview-card');
   card.style.display = '';
@@ -1805,8 +2410,18 @@ function confirmarEliminarEstudiante() {
       r.username = c.usernameNuevo;
       r.firstname = nombres ? `${c.usernameNuevo} ${nombres}` : c.usernameNuevo;
       r.email = `${c.usernameNuevo}@${ACADEMIA_ACTUAL.emailDominio}`;
+      if (genModoAgregar) {
+        const rExist = genModoAgregarExistentes.find(x => x.id === r.id);
+        if (rExist) { rExist.username = r.username; rExist.firstname = r.firstname; rExist.email = r.email; }
+      }
     }
   });
+
+  if (genModoAgregar) {
+    const idxExist = genModoAgregarExistentes.findIndex(r => r.id === row.id);
+    if (idxExist !== -1) genModoAgregarExistentes.splice(idxExist, 1);
+  }
+  delete genFilasOriginal[row.id];
   genPreviewRows.splice(i, 1);
 
   closeModal('modal-eliminar-estudiante');

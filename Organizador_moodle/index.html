@@ -42,7 +42,7 @@
 <title>Organizador Moodle</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 <link rel="stylesheet" href="carnets.css?v=1">
 </head>
 <body>
@@ -219,10 +219,13 @@
       <div class="badges-row" id="cd-badges"></div>
 
       <div class="card" style="margin-top:16px">
-        <button type="button" class="acc-header" data-acc="col-cursos-media" aria-expanded="true" onclick="toggleAcordeon('col-cursos-media')">
-          <span class="acc-chevron">▾</span>
-          <span class="acc-title" id="cd-asig-media-title">🎓 Cursos copiados · Educación Media</span>
-        </button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="button" class="acc-header" data-acc="col-cursos-media" aria-expanded="true" onclick="toggleAcordeon('col-cursos-media')" style="flex:1">
+            <span class="acc-chevron">▾</span>
+            <span class="acc-title" id="cd-asig-media-title">🎓 Cursos copiados · Educación Media</span>
+          </button>
+          <button type="button" class="btn btn-ghost" onclick="abrirCambiarSufijoModal(currentCollegeId,'media')" aria-label="Cambiar el sufijo de los cursos y usuarios de Educación Media de este colegio">🔁 Cambiar sufijo</button>
+        </div>
         <div class="acc-body" data-acc="col-cursos-media">
           <div class="table-wrap" id="cd-asig-media-wrap">
             <table class="data-table">
@@ -248,10 +251,13 @@
       </div>
 
       <div class="card" style="margin-top:16px">
-        <button type="button" class="acc-header" data-acc="col-cursos-primaria" aria-expanded="true" onclick="toggleAcordeon('col-cursos-primaria')">
-          <span class="acc-chevron">▾</span>
-          <span class="acc-title" id="cd-asig-primaria-title">🧒 Cursos copiados · Educación Primaria</span>
-        </button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="button" class="acc-header" data-acc="col-cursos-primaria" aria-expanded="true" onclick="toggleAcordeon('col-cursos-primaria')" style="flex:1">
+            <span class="acc-chevron">▾</span>
+            <span class="acc-title" id="cd-asig-primaria-title">🧒 Cursos copiados · Educación Primaria</span>
+          </button>
+          <button type="button" class="btn btn-ghost" onclick="abrirCambiarSufijoModal(currentCollegeId,'primaria')" aria-label="Cambiar el sufijo de los cursos y usuarios de Educación Primaria de este colegio">🔁 Cambiar sufijo</button>
+        </div>
         <div class="acc-body" data-acc="col-cursos-primaria">
           <div class="table-wrap" id="cd-asig-primaria-wrap">
             <table class="data-table">
@@ -922,6 +928,69 @@
   </div>
 </div>
 
+<!-- MODAL: Cambiar sufijo de colegio -->
+<div class="modal-overlay" id="modal-cambiar-sufijo">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-title">🔁 Cambiar sufijo</div>
+    <p class="card-text" style="margin-bottom:12px">Corrige el sufijo de usuario usado en los cursos copiados y los participantes de este colegio, sin cambiar el dígito ni su ancho.</p>
+
+    <div class="form-field" style="margin-bottom:10px">
+      <label>Niveles a incluir</label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label id="suf-nivel-media-wrap" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--text)">
+          <input type="checkbox" id="suf-nivel-media" style="width:auto" onchange="onSufNivelesChange()"> 🎓 Educación Media
+        </label>
+        <label id="suf-nivel-primaria-wrap" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--text)">
+          <input type="checkbox" id="suf-nivel-primaria" style="width:auto" onchange="onSufNivelesChange()"> 🧒 Educación Primaria
+        </label>
+      </div>
+    </div>
+
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px">
+      <div class="form-field">
+        <label>Sufijo actual a reemplazar</label>
+        <select id="suf-viejo" onchange="onSufFormChanged()"></select>
+      </div>
+      <div class="form-field">
+        <label>Sufijo nuevo</label>
+        <input type="text" id="suf-nuevo" placeholder="Ej: hum" oninput="onSufFormChanged()">
+      </div>
+    </div>
+
+    <div id="suf-error" class="gen-error" style="display:none;margin-top:6px"></div>
+
+    <div class="modal-actions" style="justify-content:flex-start">
+      <button class="btn btn-ghost" onclick="generarVistaPreviaSufijo()">Vista previa</button>
+    </div>
+
+    <div id="suf-preview" style="display:none;margin-top:6px;padding-top:12px;border-top:1px solid var(--border)">
+      <div id="suf-preview-body"></div>
+      <div id="suf-choques-box" class="gen-error" style="display:none;margin-top:10px"></div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn btn-ghost" onclick="closeModal('modal-cambiar-sufijo')">Cancelar</button>
+      <button class="btn btn-primary" id="suf-aplicar-btn" disabled onclick="confirmarCambioSufijo()">Aplicar cambio</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Resultado del cambio de sufijo (incluye la descarga única del CSV de renombre) -->
+<div class="modal-overlay" id="modal-sufijo-resultado">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">✓ Sufijo actualizado</div>
+    <p class="card-text" id="suf-resultado-texto" style="margin-bottom:14px"></p>
+    <div class="gen-error" style="margin-bottom:12px">⚠ El CSV normal de cada lista ya trae los usuarios nuevos. Si estos usuarios o cursos ya existen en Moodle, deben renombrarse allí — esta app no se comunica con Moodle.</div>
+    <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px">
+      <button class="btn btn-ghost" onclick="descargarCSVRenombreSufijo()">⬇ Renombrar usuarios en Moodle (.csv)</button>
+      <button class="btn btn-ghost" onclick="prepararReversionSufijo()">↩ Revertir este cambio</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="cerrarResultadoSufijo()">Listo</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Conectar con la nube (correo + contraseña de Firebase, NO el código de acceso) -->
 <div class="modal-overlay" id="modal-conectar-nube">
   <div class="modal" style="max-width:420px">
@@ -992,7 +1061,7 @@
 <script src="lib/xlsx.full.min.js"></script>
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/jszip.min.js"></script>
-<script src="script.js?v=10"></script>
+<script src="script.js?v=12"></script>
 <script src="carnets-pdf.js?v=2"></script>
 <script src="carnets.js?v=4"></script>
 </body>

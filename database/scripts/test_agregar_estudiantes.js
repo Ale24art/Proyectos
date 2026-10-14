@@ -4,8 +4,10 @@
    (§6 de agregar_estudiantes_a_lista.md)
 
    Prueba la lógica sin navegador ni DOM: pool, comparación de
-   existentes/nuevos, numeración, CSV de nuevos y compatibilidad
-   del campo agregadoEn con el ciclo ida/vuelta SQL.
+   existentes/nuevos, numeración, CSV de nuevos, compatibilidad
+   del campo agregadoEn con el ciclo ida/vuelta SQL, y la edición
+   de nombre/apellido de un estudiante existente conservando su
+   usuario (vista editable de Ver/Editar).
 
    Uso: node test_agregar_estudiantes.js
    ════════════════════════════════════════════════════════════ */
@@ -524,9 +526,152 @@ if (DatabaseSync) {
   console.log('  (node:sqlite no disponible en Node.js <22; pruebas SQL omitidas)');
 }
 
-// ── Prueba 9: node --check sobre los archivos modificados ────────
+// ── Prueba 9: editar nombre/apellido de un estudiante existente ──
+//    conservando su usuario (vista editable de Ver/Editar).
+//    Replica la lógica pura de _aplicarEdicionNombre y de la parte
+//    de _guardarListaEnModoAgregar que persiste cambios a filas
+//    con id (estudiantes ya guardados), más la interacción con la
+//    comparación existente/nuevo del modo agregar.
 
-console.log('\n9) Sintaxis JS verificada (node --check):');
+console.log('\n9) Editar nombre/apellido conservando usuario:');
+
+function aplicarEdicionNombre(row, field, rawValue) {
+  const value = String(rawValue).trim();
+  if (field === 'lastname') {
+    if (!value) return { error: 'El apellido no puede quedar vacío.' };
+    return { ...row, lastname: value };
+  }
+  const username = row.username || '';
+  const prefix = username + ' ';
+  const nombres = value.startsWith(prefix) ? value.slice(prefix.length).trim() : value;
+  if (!nombres) return { error: 'El nombre no puede quedar vacío.' };
+  return { ...row, firstname: username ? `${username} ${nombres}` : nombres };
+}
+
+ok('nombre sin prefijo: se añade el username automáticamente', () => {
+  const row = { id: 'p1', username: 'am158', firstname: 'am158 GUZMÁN GAEL', lastname: 'RAMÍREZ LINARES' };
+  const r = aplicarEdicionNombre(row, 'firstname', 'JOSE ALEJANDRO');
+  assert.ok(!r.error, r.error);
+  assert.strictEqual(r.firstname, 'am158 JOSE ALEJANDRO');
+});
+
+ok('nombre con prefijo correcto: se respeta tal cual', () => {
+  const row = { id: 'p1', username: 'am158', firstname: 'am158 GUZMÁN GAEL', lastname: 'RAMÍREZ LINARES' };
+  const r = aplicarEdicionNombre(row, 'firstname', 'am158 JOSE ALEJANDRO');
+  assert.ok(!r.error, r.error);
+  assert.strictEqual(r.firstname, 'am158 JOSE ALEJANDRO');
+});
+
+ok('apellido editado se guarda tal cual (sin tocar mayúsculas/acentos)', () => {
+  const row = { id: 'p1', username: 'am158', firstname: 'am158 JOSE ALEJANDRO', lastname: 'RAMÍREZ LINARES' };
+  const r = aplicarEdicionNombre(row, 'lastname', '  MONTILLA VALERO  ');
+  assert.ok(!r.error, r.error);
+  assert.strictEqual(r.lastname, 'MONTILLA VALERO', 'solo se recortan espacios en los extremos');
+});
+
+ok('nombre vacío no se guarda y reporta error', () => {
+  const row = { id: 'p1', username: 'am158', firstname: 'am158 JOSE ALEJANDRO', lastname: 'MONTILLA VALERO' };
+  const r = aplicarEdicionNombre(row, 'firstname', '   ');
+  assert.ok(r.error, 'debe reportar error');
+});
+
+ok('apellido vacío no se guarda y reporta error', () => {
+  const row = { id: 'p1', username: 'am158', firstname: 'am158 JOSE ALEJANDRO', lastname: 'MONTILLA VALERO' };
+  const r = aplicarEdicionNombre(row, 'lastname', '');
+  assert.ok(r.error, 'debe reportar error');
+});
+
+function simularGuardarExistentes(participantes, filasEditadas) {
+  let actualizados = 0;
+  filasEditadas.forEach(r => {
+    const p = participantes.find(x => x.id === r.id);
+    if (!p) return;
+    let nombres = r.firstname;
+    if (r.username && r.firstname.startsWith(r.username + ' ')) nombres = r.firstname.slice(r.username.length + 1);
+    if (p.nombres !== nombres || p.apellidos !== r.lastname) {
+      p.nombres = nombres; p.apellidos = r.lastname; actualizados++;
+    }
+  });
+  return actualizados;
+}
+
+ok('"Guardar lista" persiste nombres/apellidos de un estudiante existente, conservando usuario/correo/id', () => {
+  const am158 = mkParticipante('am158', '5to Año', 'media');
+  am158.id = 'id-am158';
+  am158.nombres = 'GUZMÁN GAEL';
+  am158.apellidos = 'RAMÍREZ LINARES';
+  const otro = mkParticipante('am159', '5to Año', 'media');
+  otro.id = 'id-am159';
+  const participantes = [am158, otro];
+
+  // Fila editada tal como quedaría en genPreviewRows tras _aplicarEdicionNombre.
+  const filaEditada = { id: 'id-am158', username: 'am158', firstname: 'am158 JOSE ALEJANDRO', lastname: 'MONTILLA VALERO' };
+  const filaSinCambios = { id: 'id-am159', username: 'am159', firstname: 'am159 NOMBRE', lastname: 'APELLIDO' };
+
+  const actualizados = simularGuardarExistentes(participantes, [filaEditada, filaSinCambios]);
+
+  assert.strictEqual(actualizados, 1, 'solo am158 cambió');
+  assert.strictEqual(am158.nombres, 'JOSE ALEJANDRO');
+  assert.strictEqual(am158.apellidos, 'MONTILLA VALERO');
+  assert.strictEqual(am158.username, 'am158', 'el usuario no cambia');
+  assert.strictEqual(am158.email, 'am158@tecno.com', 'el correo no cambia');
+  assert.strictEqual(am158.id, 'id-am158', 'el id no cambia');
+  assert.strictEqual(otro.nombres, 'NOMBRE', 'el otro estudiante no se toca');
+});
+
+ok('interacción con modo agregar: la línea editada y sincronizada no se cuenta como nueva ni duplica usuario', () => {
+  // Estado "genModoAgregarExistentes" después de que _sincronizarFilaModoAgregar ya reflejó
+  // la edición de am158 (como haría _aplicarEdicionNombre + el sync hacia las cajas de texto).
+  const existentesTrasEditar = [
+    { id: 'id-am158', username: 'am158', firstname: 'am158 JOSE ALEJANDRO', lastname: 'MONTILLA VALERO' },
+    { id: 'id-am159', username: 'am159', firstname: 'am159 NOMBRE2', lastname: 'APELLIDO2' },
+  ];
+  const todos = [
+    mkParticipante('am158', '5to Año', 'media'),
+    mkParticipante('am159', '5to Año', 'media'),
+  ];
+  // Las cajas de Apellidos/Nombres, ya resincronizadas, muestran la línea editada + una nueva al final.
+  const r = simularModoAgregar({
+    existentes: existentesTrasEditar.map(r => ({ nombres: r.firstname.slice(r.username.length + 1), apellidos: r.lastname })),
+    apLines: ['MONTILLA VALERO', 'APELLIDO2', 'PEREZ'],
+    noLines: ['JOSE ALEJANDRO', 'NOMBRE2', 'LUIS'],
+    todosParticipantes: todos,
+    colegioId: COLEGIO_ID, nivel: 'media', prefix: 'am', digits: 4,
+    nombreCorto: NOMBRE_CORTO, group1: '', password: '1234', city: '',
+    emailDominio: EMAIL_DOMINIO
+  });
+  assert.ok(!r.error, r.error);
+  assert.strictEqual(r.countEx, 2, 'las dos líneas sincronizadas (incluida la editada) se reconocen como existentes');
+  assert.strictEqual(r.nuevos.length, 1, 'solo PEREZ LUIS es nuevo');
+  assert.strictEqual(r.nuevos[0].apellidos, 'PEREZ');
+});
+
+ok('sin sincronizar: la línea vieja (no editada) de la caja de texto se trataría como duplicado — por eso se sincroniza', () => {
+  // Si NO se sincronizaran las cajas tras editar, "existentes" (comparación) tendría el nombre
+  // NUEVO de am158, pero la caja de texto seguiría mostrando el nombre VIEJO: no coincidirían,
+  // y am158 se generaría de nuevo con un usuario duplicado/incorrecto. Este caso demuestra por
+  // qué _sincronizarFilaModoAgregar/_sincronizarTextareasModoAgregar son necesarias.
+  const existentesTrasEditarSinSync = [
+    { id: 'id-am158', username: 'am158', firstname: 'am158 JOSE ALEJANDRO', lastname: 'MONTILLA VALERO' },
+  ];
+  const todos = [mkParticipante('am158', '5to Año', 'media')];
+  const r = simularModoAgregar({
+    existentes: existentesTrasEditarSinSync.map(r => ({ nombres: r.firstname.slice(r.username.length + 1), apellidos: r.lastname })),
+    apLines: ['RAMÍREZ LINARES'], // línea vieja, nunca sincronizada
+    noLines: ['GUZMÁN GAEL'],
+    todosParticipantes: todos,
+    colegioId: COLEGIO_ID, nivel: 'media', prefix: 'am', digits: 4,
+    nombreCorto: NOMBRE_CORTO, group1: '', password: '1234', city: '',
+    emailDominio: EMAIL_DOMINIO
+  });
+  assert.ok(!r.error, r.error);
+  assert.strictEqual(r.countEx, 0, 'sin sincronizar, la línea vieja no coincide con el nombre ya editado');
+  assert.strictEqual(r.nuevos.length, 1, 'por eso se generaría un usuario de más (duplicado lógico)');
+});
+
+// ── Prueba 10: node --check sobre los archivos modificados ───────
+
+console.log('\n10) Sintaxis JS verificada (node --check):');
 const { execSync } = require('child_process');
 const path = require('path');
 const base = path.join(__dirname, '..', '..');
@@ -554,19 +699,22 @@ archivos.forEach(rel => {
 
 console.log(`\n${'─'.repeat(55)}`);
 console.log(`Resultado: ${passed} pasaron, ${failed} fallaron.\n`);
+const NO_PROBADO = [
+  'NO pudo probar (requiere navegador / DOM real):',
+  '  - El modo agregar en la interfaz (bloqueo de selectores,',
+  '    relleno de textareas, banner, contador en vivo, resaltado',
+  '    de filas "Nuevo" en la tabla editable).',
+  '  - El botón "⬇ CSV solo de los nuevos" desde Ver/Editar.',
+  '  - Sincronización de agregadoEn con Firebase.',
+  '  - Edición de Nombre completo/Apellidos en la tabla editable:',
+  '    el resaltado visual "gen-row-editado" (sin persistir), la',
+  '    sincronización en vivo de las cajas de Apellidos/Nombres al',
+  '    editar una fila existente, y el comportamiento onchange',
+  '    (se confirma al salir del campo, no en cada tecla).',
+];
 if (failed) {
-  console.log('NO pudo probar (requiere navegador / DOM real):');
-  console.log('  - El modo agregar en la interfaz (bloqueo de selectores,');
-  console.log('    relleno de textareas, banner, contador en vivo, resaltado');
-  console.log('    de filas "Nuevo" en la tabla editable).');
-  console.log('  - El botón "⬇ CSV solo de los nuevos" desde Ver/Editar.');
-  console.log('  - Sincronización de agregadoEn con Firebase.');
+  NO_PROBADO.forEach(l => console.log(l));
   process.exit(1);
 } else {
-  console.log('NO pudo probar (requiere navegador / DOM real):');
-  console.log('  - El modo agregar en la interfaz (bloqueo de selectores,');
-  console.log('    relleno de textareas, banner, contador en vivo, resaltado');
-  console.log('    de filas "Nuevo" en la tabla editable).');
-  console.log('  - El botón "⬇ CSV solo de los nuevos" desde Ver/Editar.');
-  console.log('  - Sincronización de agregadoEn con Firebase.');
+  NO_PROBADO.forEach(l => console.log(l));
 }
