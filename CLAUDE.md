@@ -2,13 +2,13 @@
 
 Memoria operativa para cualquier sesión de Claude Code en este repositorio. **Este archivo es el índice y las reglas.** El detalle técnico verificado línea por línea vive en [`nueva documentacion.md`](nueva%20documentacion.md) — ante cualquier duda técnica profunda (modelo de datos completo, reglas de negocio, sincronización, deuda técnica detallada), léelo primero. Si `CLAUDE.md` y `nueva documentacion.md` contradicen al código actual, **gana el código**, y hay que corregir ambos documentos.
 
-Última revisión completa de este archivo: **2026-10-22**, por una sesión de Claude Code que analizó todo el repositorio en modo solo lectura (sin tocar código).
+Última revisión completa de este archivo: **2026-10-23**, por una sesión de Claude Code que retiró Firebase (Fase 3) y actualizó toda la documentación.
 
 ---
 
 ## 1. Qué es este proyecto
 
-Nació como un **Organizador de Moodle**: una web estática (HTML+CSS+JS, sin build, sin backend) para que dos academias —**TecnoCleveland** (robótica) y **Cleveland English Institute** (inglés)— controlen qué curso modelo de Moodle se copió a cada colegio, generen usuarios de Moodle en bloque y generen carnets de acceso imprimibles. Hoy vive en `Organizador_moodle/`, se despliega en Firebase Hosting, y desde octubre de 2026 puede sincronizar sus datos con Firestore de forma opcional (ver §9).
+Nació como un **Organizador de Moodle**: una web estática (HTML+CSS+JS, sin build, sin backend) para que dos academias —**TecnoCleveland** (robótica) y **Cleveland English Institute** (inglés)— controlen qué curso modelo de Moodle se copió a cada colegio, generen usuarios de Moodle en bloque y generen carnets de acceso imprimibles. Hoy vive en `Organizador_moodle/`, se despliega en Firebase Hosting, y opera en modo **100% local** (localStorage + respaldo .json). La sincronización con Firebase (Fase 2, oct 2026) fue retirada en oct 2026 porque nunca llegó a funcionar; el plan es reactivarla contra un backend propio en el VPS (ver §9 y §10).
 
 **Destino declarado por el dueño del proyecto:** convertirlo en un **sistema de control de estudio** para ambas academias, mudarlo a un **servidor Contabo con dominio propio**, desarrollando primero en local y migrando después. **No se ha definido todavía** qué va a controlar exactamente ese sistema nuevo, qué roles/permisos tendrá, ni los detalles del servidor/dominio — ver §14 "Pendiente de confirmar". No inventes funcionalidad de ese sistema nuevo: hoy solo existe el Organizador descrito arriba.
 
@@ -16,11 +16,11 @@ Nació como un **Organizador de Moodle**: una web estática (HTML+CSS+JS, sin bu
 
 ## 2. Estado actual (verificado 2026-10-22)
 
-- **Rama:** `main`. **Al día con `origin/main`** (`git fetch` + `git status -sb` → `## main...origin/main`, sin ahead/behind).
-- **Working tree limpio**, sin cambios sin commit (antes de que esta sesión creara este archivo).
-- **Commit actual (HEAD):** `cb928be` — merge de `main` con `origin/main` (2026-10-14).
+- **Rama:** `main`. **Al día con `origin/main`** al inicio de la sesión del 2026-10-23 (`git fetch` + `git status -sb` → `## main...origin/main`, sin ahead/behind).
+- **Working tree con cambios sin commit** desde la sesión del 2026-10-23 (retiro de Firebase, Fase 3 — ver §15).
+- **Commit actual (HEAD antes de los cambios de la Fase 3):** `cb928be` — merge de `main` con `origin/main` (2026-10-14).
 - **Último commit de código de la app:** `cf9e028` "nuevos cambios" (2026-10-14) — edición de nombre conservando usuario + cambio de sufijo de colegio.
-- **Producción:** no se verificó el sitio publicado en esta sesión (no se ejecutó ningún `firebase deploy` ni se consultó el historial de Hosting). `Organizador_moodle/firebase-config.js` ya tiene credenciales reales de un proyecto Firebase (no placeholders) — ver riesgo en §9 y §14.
+- **Producción:** pendiente de deploy tras los cambios de la Fase 3. Firebase (Firestore + Auth) retirado del cliente; `.firebaserc` y el bloque `hosting` de `firebase.json` se conservan para seguir desplegando en Firebase Hosting hasta migrar al VPS.
 - **Herramientas:** `node v24.19.0`, `npm 11.17.0`, `firebase-tools 15.32.1`, `git 2.55.0.windows.5`.
 
 **Si al empezar una tarea nueva `git status -sb` muestra que `main` está detrás de `origin/main`: detente y avisa.** El dueño trabaja desde dos equipos (Windows y un Chromebook); seguir sin avisar puede pisar trabajo hecho en el otro equipo.
@@ -36,7 +36,7 @@ Nació como un **Organizador de Moodle**: una web estática (HTML+CSS+JS, sin bu
 | `stickers/` | Generador de carnets independiente, predecesor de `carnets.js`. Su motor de PDF (`js/stickers.js`) es la base de la que se copió `carnets-pdf.js` (el propio comentario de cabecera de `carnets-pdf.js` dice "Adaptado de stickers/js/stickers.js") | Heredado / duplicado — se conserva a propósito como respaldo independiente | No |
 | `Workflows/` | Prompts/runbooks en `.md` para que un asistente de IA ejecute tareas contra la **API REST de Moodle** (copiar cursos entre colegios, importar clases nuevas desde un curso staging, poner nombres en mayúsculas). No están conectados al código de la app — son instrucciones operativas manuales | Activo (como documentación operativa) | No |
 | `database/` | Esquema SQL portable + scripts de migración/prueba, pensados para una futura base de datos propia (preparación para Contabo, ver §10) | Activo, en desarrollo — aún no usado en producción | No |
-| `.firebase/`, `.firebaserc`, `firebase.json`, `firestore.rules` | Config y caché de despliegue de Firebase (ver §9) | Activo | `.firebase/` no debería estar versionado (ver §13) |
+| `.firebase/`, `.firebaserc`, `firebase.json` | Config y caché de despliegue de Firebase Hosting (ver §9). `firebase.json` conserva solo el bloque `"hosting"` desde 2026-10-23. `firestore.rules` eliminado. | Activo (solo hosting) | `.firebase/` no debería estar versionado (ver §13) |
 | `nueva documentacion.md` | Documentación técnica detallada y vigente, verificada contra el código | Activo — fuente de verdad técnica | No |
 | `README.md` | — | **Desactualizado**: enlaza a `documentacion_organizador_moodle.md`, archivo que ya no existe (fue reemplazado por `nueva documentacion.md`) | No |
 | `agregar_estudiantes_a_lista.md`, `cambiar_sufijo_colegio.md`, `participantes_y_carnets.md`, `INSTRUCCION_sincronizacion_firebase_y_base_de_datos.md`, `PLAN_sincronizacion_firebase.md` | Instrucciones históricas, una por funcionalidad | **Ya aplicadas** — cada una coincide con un commit real que implementa exactamente lo que pide (ver §12) | No |
@@ -79,14 +79,13 @@ Las 5 pruebas pasan al 100% hoy (ver resultado completo en §11). Cubren lógica
 
 **Orden de carga obligatorio en `index.html`** (no reordenar):
 ```
-academias.js → sync-core.js → sync.js
-  → lib/firebase-{app,auth,firestore}-compat.min.js → firebase-config.js → sync-firebase.js
+academias.js?v=2 → sync-core.js?v=1
   → lib/xlsx.full.min.js → lib/jspdf.umd.min.js → lib/jszip.min.js
-  → script.js → carnets-pdf.js → carnets.js
+  → script.js?v=13 → carnets-pdf.js?v=2 → carnets.js?v=4
 ```
-`script.js` lee `ACADEMIA_ACTUAL` al vuelo, por eso `academias.js` va primero. Los `<script>` del SDK de Firebase llevan `onerror` que solo loguea — si no cargan, el resto sigue funcionando en modo solo local.
+`script.js` lee `ACADEMIA_ACTUAL` al vuelo, por eso `academias.js` va primero. `sync-core.js` se mantiene en el HTML para que esté disponible cuando se reactive `sync.js` con el adaptador REST del VPS. **Cuando se active el backend VPS**, agregar después de `sync-core.js?v=1`: `<script src="sync.js?v=2">` y `<script src="sync-rest.js?v=1">`.
 
-**Flujo de arranque:** `login.html` valida el código contra `USERS` (en el propio archivo) → guarda `tcUser`/`tcAcademia` en `sessionStorage` → `index.html` exige ambas claves o redirige a login → `script.js`: `loadData()` → `applyAcademiaBranding()` → `renderAll()` → `Carnets.init()` → (en paralelo, si hay nube vinculada) `Sync.cargar()`, nunca bloquea el render con datos locales.
+**Flujo de arranque:** `login.html` valida el código contra `USERS` (en el propio archivo) → guarda `tcUser`/`tcAcademia` en `sessionStorage` → `index.html` exige ambas claves o redirige a login → `script.js`: `loadData()` → `applyAcademiaBranding()` → `renderAll()` → `Carnets.init()`.
 
 **Multi-academia (`academias.js`):** cada academia (`tecno`/`cleveland`) define `storageKey` (clave de `localStorage`, **"¡NO cambiar!" en el propio código**), `emailDominio`, `importarCSV`, `importarCSVConservarDatos`, `idiomaCarnet`, `idiomaUI`. Todo el resto del código lee estos flags — nunca hardcodea nada por academia salvo las excepciones ya señaladas en §8. Detalle completo: `nueva documentacion.md` §3.
 
@@ -123,7 +122,7 @@ Objeto global `data` (memoria + `localStorage[STORAGE_KEY]`): `colegios`, `curso
 | Buscar | `script.js` → `renderBuscar()`, `exportReportCSV()` | — |
 | Respaldo (export/import `.json`) | `script.js` → `exportBackup`/`importBackup` | Respaldo automático antes de reemplazar si `data` no está vacío; confirmación extra si la nube está vinculada |
 | Papelera (6 secciones) | `script.js` → `restoreX`/`permaDeleteX` simétricos | Nada se borra para siempre salvo "Eliminar para siempre" / "Vaciar papelera" explícitos |
-| Sincronización con la nube | `sync.js`/`sync-core.js`/`sync-firebase.js` | Ver §9 |
+| Sincronización con la nube | *Retirada en 2026-10-23. Ver §9 y §10.* | `sync-core.js` conservado en disco |
 
 Detalle función por función, con líneas aproximadas: `nueva documentacion.md` §6–§7.
 
@@ -137,7 +136,7 @@ Detalle función por función, con líneas aproximadas: `nueva documentacion.md`
 4. El cambio de sufijo de colegio nunca cambia el dígito del username ni su ancho, y se bloquea entero si hay un choque exacto de username en cualquier parte de la academia.
 5. El prefijo de `firstname` nunca puede diferir del `username` real de la fila.
 6. La numeración de usuarios nunca reutiliza números ya activos (solo "Reestructurar" explícito).
-7. `script.js`, `carnets.js` y `login.html` **nunca** llaman a `firebase.*` directamente — solo hablan con `window.Sync` (`sync.js`). El único archivo que toca `firebase.*` es `sync-firebase.js`. Es lo que permite mudarse a un backend propio reemplazando un solo archivo (ver §10).
+7. `script.js`, `carnets.js` y `login.html` no llaman a `firebase.*` ni a `window.Sync` — Firebase fue retirado en 2026-10-23. Cuando se active el backend VPS, solo `sync-rest.js` (adaptador REST) hablará con el servidor; `script.js` y `sync.js` no cambiarán (ver §10).
 8. Nada de código ejecuta `git push`, `firebase deploy` ni `firebase deploy --only firestore:rules` automáticamente.
 9. Nunca se sube a git un respaldo `.json` real, un CSV con datos de estudiantes, una clave de cuenta de servicio de Firebase, ni una base `.db`/`.sql` con datos reales — el `.gitignore` de la raíz ya los excluye; no debilitarlo.
 10. Antes de tocar `carnets-pdf.js`, revisar si el cambio también aplica a `stickers/js/stickers.js` (dos copias del mismo motor de PDF, ver §3).
@@ -146,12 +145,14 @@ Detalle función por función, con líneas aproximadas: `nueva documentacion.md`
 
 ## 9. Sincronización y nube
 
-`window.Sync` (`sync.js`) es la única interfaz que usa `script.js`; `sync-core.js` tiene la lógica pura de diff/fusión/tombstones (hash FNV-1a, reusada también por las pruebas de `database/scripts/`); `sync-firebase.js` es el único adaptador concreto (Firestore, bajo `academias/{academiaId}/...`, con `auth_map/{uid}` mapeando cada cuenta de Firebase Auth a su academia). Sincronización por **polling** (al abrir, al volver a la pestaña, o con "Sincronizar ahora") — **no hay listener en tiempo real**. Tres estados de vinculación por dispositivo: solo local (default), vinculado sin conflicto, o conflicto inicial (datos distintos en nube y equipo → modal de decisión explícita).
+**Firebase (Firestore + Auth) fue retirado completamente el 2026-10-23.** La app opera en modo 100% local: `localStorage` + respaldo `.json` manual. Los archivos `sync-firebase.js`, `firebase-config.js`, `lib/firebase-*-compat.min.js` y `firestore.rules` fueron eliminados. El bloque `"hosting"` de `firebase.json` y `.firebaserc` se conservan para seguir desplegando en Firebase Hosting.
 
-**Específico de Firebase (no portable):** `sync-firebase.js`, `firebase-config.js`, `firestore.rules`, `firebase.json`/`.firebaserc`, las 3 libs `lib/firebase-*-compat.min.js`, la colección `auth_map`.
-**Portable:** `sync.js`, `sync-core.js`, y el contrato de 7 funciones que cualquier adaptador nuevo debe implementar (documentado en `database/MIGRACION_A_SERVIDOR_PROPIO.md`). La interfaz de `Sync` no filtra conceptos de Firestore hacia el resto del código.
+**Lo que se conserva en disco para el VPS:**
+- `sync-core.js` — lógica pura de diff/fusión/tombstones; se carga en `index.html` y lo usan las pruebas de `database/scripts/`.
+- `sync.js` — interfaz genérica `window.Sync`; en disco pero **sin `<script>` en `index.html`**. Se reutiliza sin cambios cuando el VPS tenga su adaptador REST.
+- El contrato de 7 funciones que cualquier adaptador debe implementar está documentado en `database/MIGRACION_A_SERVIDOR_PROPIO.md`.
 
-**Diagnóstico de "Error de sincronización" (sin corregir, solo diagnosticado):** `sync.js` solo clasifica como "sin conexión" los errores cuyo mensaje contiene `network`/`unavailable`/`offline`/`failed-precondition`. Cualquier otro error de Firestore —permiso denegado por reglas, `auth_map/{uid}` inexistente tras un login válido, o cuota agotada del plan gratuito— cae en el estado genérico `'error'` sin distinguirse en la UI. Como `firebase-config.js` ya tiene credenciales reales (confirmado esta sesión), la causa más probable hoy es que falten uno o más de los pasos manuales de consola (Firestore/Auth habilitados, las 3 cuentas creadas, sus documentos `auth_map`, o las reglas publicadas) — ver checklist completo en `nueva documentacion.md`, sección final "Pasos manuales pendientes", y confirmar con el dueño (§14).
+Separación Tecno/Cleveland la garantiza hoy solo `storageKey` (cliente). Cuando exista el backend VPS deberá replicarse también en las reglas de autorización del servidor.
 
 ---
 
@@ -167,7 +168,7 @@ Detalle función por función, con líneas aproximadas: `nueva documentacion.md`
 
 ## 11. Pruebas y salud del código (verificado 2026-10-22)
 
-**`node --check`:** pasa sin errores en **todos** los `.js` propios (`Organizador_moodle/*.js`, `Organizador/script.js`, `stickers/js/*.js`, `database/scripts/*.js`), excluyendo `lib/`.
+**`node --check`:** pasa sin errores en **todos** los `.js` propios (`Organizador_moodle/*.js`, `Organizador/script.js`, `stickers/js/*.js`, `database/scripts/*.js`), excluyendo `lib/`. Verificado de nuevo en 2026-10-23 tras el retiro de Firebase.
 
 **Pruebas de `database/scripts/` — las 5 pasan al 100%:** `test_agregar_estudiantes.js` (32/32), `test_cambiar_sufijo.js` (18/18), `test_idavuelta.js` (incluye caso de 5 000 participantes), `test_sync_core.js` (7/7), `test_sync_dos_dispositivos.js` (2/2). Cobertura fuerte en lógica pura de negocio; nula en interacción de DOM real y contra Firebase/MySQL reales (documentado como limitación conocida, no como bug).
 
@@ -231,7 +232,7 @@ Detalle función por función, con líneas aproximadas: `nueva documentacion.md`
 2. **Volumen de datos** esperado (cuántos estudiantes/cursos) para dimensionar el servidor Contabo y la base SQL.
 3. **Dominio y HTTPS:** ¿ya están decididos el dominio y el proveedor de certificado, o hay que elegirlos como parte de este trabajo?
 4. **Copias de seguridad en el servidor nuevo:** ¿frecuencia y retención deseadas?
-5. **Estado real de los pasos manuales de Firebase** (Firestore/Auth habilitados, las 3 cuentas de nube creadas, sus documentos `auth_map`, reglas publicadas): `firebase-config.js` ya tiene credenciales reales, pero no se pudo confirmar desde este entorno si los demás pasos de la consola ya se hicieron — esto decide si el "Error de sincronización" (§9) es por reglas/autorización o por cuota.
+5. ~~**Estado real de los pasos manuales de Firebase**~~ — ya no aplica; Firebase fue retirado el 2026-10-23 (ver §9).
 6. **Token de la API REST de Moodle expuesto en texto plano** en varios archivos de `Workflows/*.md` (commiteado en git, visible en el historial). No se reprodujo aquí por seguridad. Se recomienda **rotarlo en Moodle** y, de aquí en adelante, no volver a escribirlo en archivos versionados — fuera del alcance de esta tarea (no se tocó `Workflows/`), pero es un hallazgo crítico que el dueño debe resolver él mismo.
 7. **Códigos de acceso de `login.html`** (`USERS`) son en texto plano, visibles en el código fuente publicado y en el historial de git — aceptado hoy como diseño simple, pero es el primer invariante a reemplazar si el sistema de control de estudio necesita autenticación más fuerte.
 8. ¿Se quiere reorganizar los `.md` de instrucciones históricas de la raíz (ya aplicadas, ver §3) a una carpeta como `docs/instrucciones/`? Esta sesión no lo hizo — solo lo propone.
@@ -262,7 +263,8 @@ Reconstruido desde `git log` (historial real, hashes verificados). Agrupado por 
 | 2026-10-10 a 2026-10-14 | `1e1f30c`, `6f2030c`, `e840b3e`, `ea13c64` | docs: runbooks de `Workflows/` (automatización de Moodle, no toca la app) | `Workflows/*` | `git revert <hash>` |
 | 2026-10-14 | `cf9e028` | feat: editar nombre/apellido conservando usuario + cambiar sufijo de colegio (genérico, cualquier academia) | `script.js`, `test_cambiar_sufijo.js` (nuevo), `test_agregar_estudiantes.js` | `git revert cf9e028` |
 | 2026-10-14 | `cb928be` | merge: `main` con `origin/main` | — | no aplica (merge) |
-| **2026-10-22** | **sin commit** | **docs: creación de `CLAUDE.md` + actualización de `nueva documentacion.md`** (esta sesión) | `CLAUDE.md` (nuevo), `nueva documentacion.md` | `git restore CLAUDE.md "nueva documentacion.md"` (antes de `git add`), o `git revert` una vez commiteado |
+| 2026-10-22 | sin commit | docs: creación de `CLAUDE.md` + actualización de `nueva documentacion.md` | `CLAUDE.md` (nuevo), `nueva documentacion.md` | `git restore CLAUDE.md "nueva documentacion.md"` (antes de `git add`) |
+| **2026-10-23** | **sin commit** | **refactor: retiro completo de Firebase (Fase 3) — app 100% local** | `Organizador_moodle/index.html`, `script.js`, `styles.css`; eliminados `sync-firebase.js`, `firebase-config.js`, `lib/firebase-*-compat.min.js`, `firestore.rules`; editados `firebase.json`, `LEEME.txt`, `CLAUDE.md`, `nueva documentacion.md`, `database/MIGRACION_A_SERVIDOR_PROPIO.md` | `git revert <hash>` una vez commiteado |
 
 ---
 

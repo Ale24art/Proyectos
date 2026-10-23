@@ -43,11 +43,10 @@ que cerrar sesión y volver a entrar con el código de la otra academia).
 
 DÓNDE SE GUARDAN LOS DATOS
 ----------------------------
-Todavía no está conectado a una base de datos en la nube (Firebase u otra).
-Por ahora todo se guarda en el "localStorage" del navegador donde lo uses,
-es decir: los datos quedan guardados en ESE navegador y ESA computadora. Cada
-academia usa su propia clave de almacenamiento, así que los datos de
-TecnoCleveland y los de Cleveland English Institute nunca se mezclan.
+Todo se guarda en el "localStorage" del navegador donde lo uses, es decir:
+los datos quedan guardados en ESE navegador y ESA computadora. Cada academia
+usa su propia clave de almacenamiento, así que los datos de TecnoCleveland y
+los de Cleveland English Institute nunca se mezclan.
 
 Esto significa:
   • Si abres el organizador desde otro computador o navegador, verás los
@@ -62,11 +61,10 @@ Por eso la app incluye la sección "Respaldo" en el menú lateral:
   • "Elegir archivo..." → restaura los datos desde un respaldo .json anterior
     (por ejemplo, si cambias de computadora o quieres recuperar información).
 
-Cuando quieras, puedo conectar esta misma app a un Firebase real (como el que
-ya usas en tu otro organizador) para que los datos se sincronicen automática-
-mente entre computadoras y no dependan de un solo navegador. Para eso solo
-necesito que me compartas la configuración de un proyecto de Firebase
-(Realtime Database) dedicado a este organizador.
+La sincronización automática entre dispositivos (antes ofrecida por Firebase)
+está retirada. El plan es habilitarla de nuevo cuando la app se mude al
+servidor propio (VPS con dominio propio). Por ahora el respaldo .json manual
+es la única copia de seguridad.
 
 QUÉ PUEDES HACER EN LA APP
 ----------------------------

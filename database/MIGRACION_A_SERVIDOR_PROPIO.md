@@ -81,11 +81,21 @@ Archivos que NO cambian en una mudanza:
 
 ## Lista de verificación de la mudanza
 
+- [x] **Firebase retirado (2026-10-23).** `sync-firebase.js`, `firebase-config.js`,
+      `lib/firebase-*-compat.min.js` y `firestore.rules` eliminados del proyecto.
+      La app queda 100% local (localStorage + respaldo .json). `sync.js` y
+      `sync-core.js` se conservan en disco para reutilizarlos con el adaptador REST.
 - [ ] El nuevo servidor sirve `Organizador_moodle/` tal cual (prueba abrir
       `login.html` y entrar con un código existente — debe funcionar
       exactamente igual, sin nube).
 - [ ] `sync-rest.js` (o el nombre que le pongas) implementa las 7 funciones
       del contrato y se registra con `window.Sync._registrarAdaptador(...)`.
+      Al activarlo, volver a agregar en `index.html`:
+      ```html
+      <script src="sync.js?v=2"></script>
+      <script src="sync-rest.js?v=1"></script>
+      ```
+      después de `<script src="sync-core.js?v=1"></script>`.
 - [ ] Las reglas de autorización de tu API separan `tecno` y `cleveland` al
       menos tan estrictamente como lo hacían `firestore.rules` (ninguna
       cuenta puede leer o escribir la academia de otra).
@@ -100,6 +110,3 @@ Archivos que NO cambian en una mudanza:
       debería requerir tocar la lógica de sincronización, solo agregar sus
       datos (ver `nueva documentacion.md` §9a para lo que sí sigue
       hardcodeado hoy del lado de `script.js`, como el catálogo base).
-- [ ] `firebase.json`, `firestore.rules`, `firebase-config.js` y
-      `lib/firebase-*-compat.min.js` se pueden borrar una vez confirmado
-      que el adaptador nuevo funciona (o conservarlos como referencia).

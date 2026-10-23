@@ -1,6 +1,6 @@
-# Organizador Moodle — Documentación (versión 5, verificada contra el código)
+# Organizador Moodle — Documentación (versión 6, verificada contra el código)
 
-**Fecha de verificación:** 2026-10-06 (contenido técnico) · **2026-10-22** (estado de commits reconciliado, ver "Cambios — 2026-10-22" abajo).
+**Fecha de verificación:** 2026-10-06 (contenido técnico) · **2026-10-22** (reconciliación de commits) · **2026-10-23** (retiro de Firebase, ver "Cambios — 2026-10-23" abajo).
 **Commit base (v5):** `2759783` — árbol limpio al comienzo de esta versión del documento. **HEAD actual verificado el 2026-10-22: `cb928be`**, `main` al día con `origin/main`, árbol de trabajo limpio.
 **Cambios en árbol de trabajo (2026-10-09, pendientes de commit):** exportaciones PDF/XLSX de participantes y correcciones de contenido (sin conteos, sin resumen, sin nombre de academia en PDF individual). Ver secciones "Cambios — 2026-10-09" abajo.
 **Cambios en árbol de trabajo (2026-10-06, pendientes de commit):** habilitar "Importar CSV" para Cleveland con carga fiel (`importarCSVConservarDatos`). Ver sección "Cambios — 2026-10-06" abajo.
@@ -12,6 +12,34 @@
 **Verificado por:** lectura directa de todos los archivos de `Organizador_moodle/` y diff completo contra `be0f135`. La v4 ya documentaba correctamente las funciones de los commits `7479d08` y `a47a813`; esta versión actualiza las referencias de estado de commit, elimina menciones a archivos INSTRUCCION borrados, corrige el fragmento de código de `showView()`, y actualiza tablas de líneas y §12.
 
 > **Principio rector: el código manda.** Este documento describe lo que está implementado en el código actual (árbol de trabajo), no lo que se intentó implementar ni lo que dice un documento más viejo.
+
+---
+
+## Cambios — 2026-10-23 (retiro completo de Firebase · Fase 3)
+
+**Objetivo:** quitar toda la sincronización con Firebase (Firestore + Auth) para dejar la app 100% local (localStorage + respaldo .json), en preparación para la migración al VPS con dominio propio. Firebase nunca llegó a funcionar en producción (ver diagnóstico en §3.7 de la versión anterior).
+
+**Archivos eliminados del disco:**
+- `Organizador_moodle/sync-firebase.js` — adaptador de Firebase (el único que llamaba a `firebase.*`)
+- `Organizador_moodle/firebase-config.js` — credenciales y configuración del SDK
+- `Organizador_moodle/lib/firebase-app-compat.min.js`, `firebase-auth-compat.min.js`, `firebase-firestore-compat.min.js` — SDK vendorizado
+- `firestore.rules` — reglas de Firestore
+
+**`firebase.json`:** se quitó el bloque `"firestore"`; solo conserva el bloque `"hosting"`.
+
+**`index.html`:** quitados los 6 `<script>` de Firebase (`sync.js`, los 3 SDK, `firebase-config.js`, `sync-firebase.js`); eliminados el botón `sync-status-bar` del sidebar, la tarjeta "☁ Sincronización en la nube" de la vista Respaldo, y los tres modales de nube (`modal-conectar-nube`, `modal-primera-subida`, `modal-conflicto-nube`). Versiones: `styles.css?v=7`, `script.js?v=13`.
+
+**`script.js`:** eliminados `Sync.encolar()` de `saveData()`; el bloque de inicialización de Sync en `DOMContentLoaded`; la confirmación extra de nube en `importBackup()`; y todas las funciones de UI de sincronización (`renderSyncStatus`, `onSyncStatusClick`, `abrirConectarNube`, `confirmarConectarNube`, `desconectarNube`, `sincronizarAhoraClick`, los manejadores de conflicto, `window.__syncAplicarDataRemota` y `window.__syncRespaldoSilencioso`). `renderRespaldoView()` se simplificó: solo muestra la fecha del último respaldo y el aviso de cuota de localStorage.
+
+**`styles.css`:** eliminadas las reglas `.sync-status-bar` y `@keyframes syncSpin`.
+
+**Conservados en disco (sin cargar en el navegador por ahora):**
+- `sync.js` — interfaz genérica `window.Sync`; se reutilizará sin cambios cuando el VPS tenga su adaptador REST (`sync-rest.js`). Para reactivarlo: agregar de nuevo `<script src="sync.js?v=2">` y `<script src="sync-rest.js?v=1">` en `index.html` después de `sync-core.js`.
+- `sync-core.js` — se sigue cargando en `index.html` (lo usan `test_sync_core.js` y `test_sync_dos_dispositivos.js` vía `require()`; es inofensivo en el navegador).
+
+**Claves de localStorage `__sync_*`:** dejadas sin tocar (datos huérfanos inofensivos en los navegadores que ya tenían sync activado).
+
+**Pruebas:** las 5 pruebas de `database/scripts/` siguen pasando al 100% sin cambios.
 
 ---
 
@@ -432,16 +460,16 @@ Implementación de `INSTRUCCION_sincronizacion_firebase_y_base_de_datos.md`, Fas
 
 **Cómo se despliega:** Firebase Hosting, proyecto `moodle-organizador` (`.firebaserc`), publicando únicamente la carpeta `Organizador_moodle/` (`firebase.json`). El despliegue es manual (`firebase deploy --only hosting`); este documento no lo ejecuta.
 
-**Dónde viven los datos:** principalmente en el `localStorage` del navegador de cada usuario, en una clave distinta por academia (`tc_organizador_data` / `cc_organizador_data`). **Desde la Fase 2, esos mismos datos se pueden sincronizar además con Firestore** si el dispositivo se vincula una vez con una cuenta de nube (ver §3.7) — pero `localStorage` sigue siendo la fuente inmediata: la app abre y guarda local primero, siempre, con o sin nube. La otra forma de mover datos entre equipos (y la única si nunca se usa la nube) es el archivo de Respaldo (.json) exportado/importado manualmente.
+**Dónde viven los datos:** en el `localStorage` del navegador de cada usuario, en una clave distinta por academia (`tc_organizador_data` / `cc_organizador_data`). La única forma de mover datos entre equipos es el archivo de Respaldo (.json) exportado/importado manualmente (vista Respaldo). La sincronización automática entre dispositivos (Firebase, Fase 2) fue retirada en 2026-10-23 y se reactivará cuando la app migre al VPS con dominio propio (ver `database/MIGRACION_A_SERVIDOR_PROPIO.md`).
 
 **Las reglas que nunca se deben romper:**
 1. `tc_organizador_data` es la clave real de TecnoCleveland en producción — **nunca** cambiarla ni renombrarla.
 2. Cualquier cambio al esquema de `data` debe seguir cargando respaldos y `localStorage` antiguos sin `carnetListas`/`carnetOpciones`/`participantes`/`trash.estudiantes`/`trash.carnetListas` (ver §4.2, patrón `parsed.x || valorPorDefecto`).
-3. Las dos academias deben quedar siempre con datos y catálogos separados: nada de `script.js`, `carnets.js`, `carnets-pdf.js`, `sync.js`, `sync-firebase.js`, `firestore.rules` ni el esquema SQL debe filtrar datos entre `tecno` y `cleveland`. En la nube esa separación la garantizan las reglas de Firestore (`firestore.rules` + `auth_map`), no solo el código del cliente.
+3. Las dos academias deben quedar siempre con datos y catálogos separados: nada de `script.js`, `carnets.js`, `carnets-pdf.js` ni el esquema SQL debe filtrar datos entre `tecno` y `cleveland`. Hoy esa separación la garantiza solo `storageKey` (cliente); cuando exista el backend VPS, deberá replicarse también en el servidor.
 4. `carnets-pdf.js` y `stickers/js/stickers.js` son hoy dos copias del mismo motor de PDF (ver §11.1): un cambio de diseño/colores en uno no se refleja en el otro a menos que se edite a mano.
-5. Nada de código genera `git push`, `firebase deploy` ni `firebase deploy --only firestore:rules` automáticamente; esos pasos los ejecuta la persona dueña del repo.
-6. Nada de `script.js`, `carnets.js` ni `login.html` llama a `firebase.*` directamente — solo hablan con `window.Sync` (`sync.js`). El único archivo que toca `firebase.*` es `sync-firebase.js` (ver §3.7 y §9a). Esto es lo que permite mudarse a un servidor propio reemplazando un solo archivo.
-7. Nunca se sube a git un respaldo `.json` real, un CSV con datos de estudiantes, una clave de cuenta de servicio de Firebase, ni una base `.db`/`.sql` con datos reales — el `.gitignore` de la raíz ya los excluye; no lo debilites.
+5. Nada de código genera `git push` ni `firebase deploy` automáticamente; esos pasos los ejecuta la persona dueña del repo.
+6. Nada de `script.js`, `carnets.js` ni `login.html` llama a `firebase.*` directamente (Firebase fue retirado en 2026-10-23). Cuando se active el backend VPS, la misma regla aplicará para las llamadas a la API REST: solo el adaptador (`sync-rest.js`) las hace; `script.js` y `sync.js` no cambian.
+7. Nunca se sube a git un respaldo `.json` real, un CSV con datos de estudiantes, ni una base `.db`/`.sql` con datos reales — el `.gitignore` de la raíz ya los excluye; no lo debilites.
 
 ---
 
@@ -453,35 +481,34 @@ Carpeta publicada en producción: `Organizador_moodle/`. Todo lo que está fuera
 |---|---|---|---|---|
 | `academias.js` | 36 | Config multi-academia. Debe cargar **primero**. | `ACADEMIAS`, `getAcademiaActual()`, `ACADEMIA_ACTUAL` | `sessionStorage.tcAcademia` |
 | `login.html` | 186 | Pantalla de login, independiente (su propio `<style>`/`<script>` inline). Sin cambios en la Fase 2: el vínculo con la nube se hace dentro de la app, no aquí. | `USERS`, `doLogin()`, `toggleEye()` | nada (standalone) |
-| `sync-core.js` | 314 | Lógica pura de sincronización (diff, fusión, tombstones). Sin DOM ni `firebase.*`. También la usan los scripts de `database/scripts/` vía `require()`. | `window.SyncCore` (y `module.exports` en Node) | nada |
-| `sync.js` | 338 | `window.Sync`: interfaz genérica que usa `script.js` para hablar de la nube (autenticar, cargar, encolar, sincronizar, estado, eventos de UI). Modo "solo local" si nadie se registra como adaptador. | `window.Sync` | `academias.js`, `sync-core.js` |
-| `sync-firebase.js` | 144 | Adaptador de Firebase. **Único archivo que llama a `firebase.*`.** Si el SDK no cargó, no hace nada (ver §9a). | se registra en `window.Sync._registrarAdaptador(...)` | SDK de Firebase (`lib/firebase-*-compat.min.js`), `firebase-config.js`, `sync.js` |
-| `firebase-config.js` | 44 | Configuración pública del proyecto Firebase (marcadores a rellenar). | `firebase.initializeApp(...)` | SDK de Firebase |
-| `index.html` | 977 | Shell de la app: sidebar (con el indicador de sincronización), las 8 vistas, 8 modales (incluidos los 3 de sincronización), carga de scripts. | — (solo markup + loader inline) | todos los `.js`/`.css` siguientes |
-| `script.js` | 3087 | Núcleo del organizador: datos, navegación, Colegios, Cursos modelo, Asignaciones, Generador de usuarios, Buscar, Respaldo (ahora con sincronización), Papelera. | `data`, `loadData/saveData`, `showView`, `esc/uid/normalize/slugify`, `renderRespaldoView/renderSyncStatus`, `ACADEMIA_ACTUAL` (de academias.js) | `academias.js`, `window.Sync` (opcional) |
+| `sync-core.js` | 314 | Lógica pura de sincronización (diff, fusión, tombstones). Sin DOM ni `firebase.*`. Se carga en `index.html` (inofensivo) y también la usan los scripts de `database/scripts/` vía `require()`. | `window.SyncCore` (y `module.exports` en Node) | nada |
+| `sync.js` | 338 | **En disco, sin cargar en el navegador desde 2026-10-23.** Define `window.Sync`; se reutilizará cuando el VPS tenga su adaptador REST (`sync-rest.js`). | `window.Sync` | `academias.js`, `sync-core.js` |
+| `index.html` | ~990 | Shell de la app: sidebar, las 8 vistas, 5 modales (sin los 3 de nube eliminados), carga de scripts. | — (solo markup + loader inline) | todos los `.js`/`.css` siguientes |
+| `script.js` | ~3200 | Núcleo del organizador: datos, navegación, Colegios, Cursos modelo, Asignaciones, Generador de usuarios, Buscar, Respaldo, Papelera. | `data`, `loadData/saveData`, `showView`, `esc/uid/normalize/slugify`, `renderRespaldoView`, `ACADEMIA_ACTUAL` (de academias.js) | `academias.js` |
 | `carnets-pdf.js` | 179 | Motor de dibujo del carnet en PDF (jsPDF). IIFE aislado. | `window.CarnetsPDF = {buildPDF, gradeLabel, academias, levels, layouts}` | `lib/jspdf.umd.min.js` |
 | `carnets.js` | 702 | Vista "Generador de carnets" (los 2 modos + opciones de impresión). IIFE aislado. | `window.Carnets = {init, render, closePreview}` | `script.js` (datos y utilidades globales), `carnets-pdf.js`, `lib/jszip.min.js` |
 | `carnets.css` | 197 | Estilos de `#view-carnets`, todo con prefijo `.cn-`. | — | `styles.css` (variables) |
-| `styles.css` | 663 | Estilos de toda la app + modo oscuro + variables por academia. Incluye clases `.acc-*` (acordeón), `.pg-*` (paginación) y `.sync-status-bar` (indicador de nube). | — | — |
+| `styles.css` | ~642 | Estilos de toda la app + modo oscuro + variables por academia. Incluye clases `.acc-*` (acordeón) y `.pg-*` (paginación). | — | — |
 | `lib/jspdf.umd.min.js` | 394 | jsPDF 2.5.2, vendored (sin CDN). | `window.jspdf` | — |
 | `lib/jszip.min.js` | 9 | JSZip 3.10.1, vendored. | `window.JSZip` | — |
 | `lib/xlsx.full.min.js` | 24 | SheetJS (xlsx), vendored. | `window.XLSX` | — |
-| `lib/firebase-app-compat.min.js` | 1 (minificado) | SDK Firebase App compat v10.14.1, vendorizado desde `gstatic.com` (no CDN en producción). | `window.firebase` | — |
-| `lib/firebase-auth-compat.min.js` | 1 (minificado) | SDK Firebase Auth compat v10.14.1, vendorizado. | `firebase.auth()` | `lib/firebase-app-compat.min.js` |
-| `lib/firebase-firestore-compat.min.js` | 1 (minificado) | SDK Firebase Firestore compat v10.14.1, vendorizado. | `firebase.firestore()` | `lib/firebase-app-compat.min.js` |
-| `LEEME.txt` | 118 | Manual de usuario final (no técnico). Algo desactualizado: no menciona Generador de usuarios, paginación, papelera ampliada ni la nube. | — | — |
+| `LEEME.txt` | ~121 | Manual de usuario final (no técnico). Actualizado en 2026-10-23: menciona que la sincronización Firebase fue retirada. | — | — |
 
 **Orden de carga en `index.html`** (obligatorio, no se puede reordenar):
 ```
-academias.js?v=2  →  sync-core.js?v=1  →  sync.js?v=1
-  →  lib/firebase-app-compat.min.js  →  lib/firebase-auth-compat.min.js  →  lib/firebase-firestore-compat.min.js
-  →  firebase-config.js?v=1  →  sync-firebase.js?v=1
+academias.js?v=2  →  sync-core.js?v=1
   →  lib/xlsx.full.min.js  →  lib/jspdf.umd.min.js  →  lib/jszip.min.js
-  →  script.js?v=6  →  carnets-pdf.js?v=1  →  carnets.js?v=2
+  →  script.js?v=13  →  carnets-pdf.js?v=2  →  carnets.js?v=4
 ```
-`script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir antes que todo. `sync.js` también lee `ACADEMIA_ACTUAL` (para `STORAGE_KEY`/`ACADEMIA_ID`) y `SyncCore` (de `sync-core.js`), por eso va justo después. Los tres `<script>` del SDK de Firebase llevan `onerror` inline que solo deja un `console.info` — si no cargan (sin internet, bloqueados), el resto de la carga continúa sin lanzar errores. `firebase-config.js` y `sync-firebase.js` comprueban `typeof firebase !== 'undefined'` antes de usarlo; si no está, no registran ningún adaptador y `window.Sync` queda en modo solo local (ver §9a). `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
+`script.js` lee `ACADEMIA_ACTUAL` al vuelo (`const STORAGE_KEY = ACADEMIA_ACTUAL.storageKey;`), por eso `academias.js` tiene que ir primero. `sync-core.js` va justo después porque `database/scripts/` hace `require()` de él y se mantiene en la misma posición para cuando se reactive `sync.js` en el futuro. `carnets.js` usa funciones globales de `script.js` (`data`, `saveData`, `esc`, `uid`, `showToast`, `extractAnioNum`, `slugify`, `normalize`, `showView`, `todayStr`, `renderTrash`, `updateTrashBadge`) y el objeto `window.CarnetsPDF`, por eso va al final.
 
-**Cache-busting (estado actual):** `script.js?v=12`, `academias.js?v=2`, `styles.css?v=6`, `carnets.js?v=4`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`, `sync.js?v=1`, `firebase-config.js?v=1`, `sync-firebase.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3), ahora con tres archivos más en esa misma situación (los tres SDK de Firebase).
+**Cuando se active el adaptador REST (VPS):** agregar después de `sync-core.js?v=1`:
+```html
+<script src="sync.js?v=2"></script>
+<script src="sync-rest.js?v=1"></script>
+```
+
+**Cache-busting (estado actual 2026-10-23):** `script.js?v=13`, `academias.js?v=2`, `styles.css?v=7`, `carnets.js?v=4`, `carnets-pdf.js?v=2`, `carnets.css?v=1`, `sync-core.js?v=1`. Los archivos de `lib/` y `login.html` siguen sin parámetro de versión — inconsistencia conocida (ver §11.3).
 
 **`Organizador/` (fuera de alcance, no tocado):** proyecto distinto y anterior. Usa su propio login, su propio `script.js`, y un `firebase-config.js` (ese proyecto sí usa o usó Firebase real). No comparte nada de código con `Organizador_moodle/`.
 
@@ -600,32 +627,13 @@ El texto del botón en pantalla cambia según `esTecno` (ver `applyAcademiaBrand
 
 Ambas son preferencias visuales del navegador: **no se incluyen en el Respaldo**, no tocan `data`, y no usan `tc_organizador_data` ni `cc_organizador_data`.
 
-### 3.7 Vínculo con la nube (opcional, por dispositivo)
+### 3.7 Sincronización entre dispositivos (retirada en 2026-10-23)
 
-**El código de acceso de `login.html` NO cambió y sigue siendo el único requisito para abrir la app.** La nube es un paso **adicional y opcional**, que se hace una sola vez por dispositivo desde dentro de la app (sidebar → "☁ Conectar con la nube", o la tarjeta "☁ Sincronización en la nube" en la vista Respaldo) — nunca desde `login.html`.
+**Firebase (Firestore + Auth) fue retirado completamente** en 2026-10-23. La app queda 100% local: solo `localStorage` + respaldo `.json` manual.
 
-**Por qué no es una contraseña derivada del código:** la Fase 1 planteó derivar la contraseña de Firebase a partir del código (`2026`, `1010`, `ruben`) más un secreto fijo en el código fuente. Se decidió explícitamente **no** usar ese camino: cualquier secreto guardado en `login.html`/`script.js` es legible por quien inspeccione el sitio publicado, así que una contraseña derivada de ahí nunca es más segura que el código mismo. En su lugar:
-- El código de acceso (`2026`/`1010`/`ruben`) sigue siendo exactamente igual que antes — **no se alargó** — y sigue siendo solo local (nunca se envía a Firebase).
-- Cada dispositivo que quiera sincronizar se vincula una vez con un **correo y una contraseña reales de Firebase Authentication** (no derivados de nada, los define la persona dueña del proyecto directamente en la consola de Firebase — ver §5 del plan / pasos manuales al final de este documento). Ese vínculo se guarda con persistencia local de Firebase (`firebase.auth().setPersistence(LOCAL)`), así que no hay que repetirlo en cada visita, solo si se borra el almacenamiento del navegador o se usa un dispositivo nuevo.
-- Hay **tres cuentas de Firebase**, una por código: `admin@tecno.organizador` (código `2026`), `asistente@tecno.organizador` (código `1010`), `ruben@cleveland.organizador` (código `ruben`). Un documento `auth_map/{uid}` (creado solo desde la consola de Firebase, nunca desde el cliente) le dice a las reglas de Firestore a qué academia pertenece cada cuenta.
+La arquitectura de sincronización (`sync-core.js`, `sync.js`, el contrato de 7 funciones, el esquema SQL en `database/`) se conserva en disco para reutilizarla cuando la app migre al VPS con dominio propio. Ver `database/MIGRACION_A_SERVIDOR_PROPIO.md` para el plan de reactivación con un adaptador REST (`sync-rest.js`) en lugar del adaptador de Firebase.
 
-**Flujo (`sync.js` / `sync-firebase.js`):**
-1. `Sync.autenticar(correo, contraseña)` llama al adaptador, que hace `signInWithEmailAndPassword` y lee `auth_map/{uid}`. Si la academia de esa cuenta no coincide con `ACADEMIA_ACTUAL.id`, se cierra la sesión inmediatamente y se rechaza — así, con el código `ruben` (academia `cleveland`) nunca se puede vincular una cuenta de `tecno`, aunque alguien conociera esa contraseña.
-2. Primera vinculación de un dispositivo **cuando la nube ya tiene datos de otro dispositivo y este equipo también tiene datos propios**: no se fusiona en silencio. Se descarga un respaldo de seguridad del estado local y se muestra el modal "⚠ La nube ya tiene datos de esta academia" con tres opciones: usar los datos de la nube, subir los de este equipo, o cancelar (desvincula el dispositivo sin tocar nada). Ver `modal-conflicto-nube` en `index.html` y `resolverConflicto*` en `sync.js`.
-3. Primera vinculación **cuando la nube está vacía y este equipo tiene datos**: modal "☁ Subir los datos de este equipo" (`modal-primera-subida`) con las opciones "Subir ahora" / "Más tarde".
-4. En el uso normal (ninguno de los dos casos anteriores, o ya resuelto una vez): la sincronización es automática y silenciosa — ver §3.7.1.
-
-**3.7.1 Cuándo se sincroniza (polling, sin tiempo real):**
-- Al abrir la app (`Sync.cargar()`, en paralelo a que la app ya se muestra con los datos locales — nunca bloquea el arranque).
-- Al volver a la pestaña (`visibilitychange`): primero se lee **solo** el `_rev` del documento raíz de la academia (1 lectura); si no cambió desde la última vez, no se descarga nada más.
-- Con el botón "↺ Sincronizar ahora" (sidebar / vista Respaldo): sube lo pendiente y luego hace la misma revisión de `_rev`.
-- **No hay listener en tiempo real** (`onSnapshot`): con 3 usuarios que raramente coinciden, el polling es más barato en lecturas y evita el riesgo de que un cambio remoto le pise la vista previa editable del Generador de usuarios a alguien que está escribiendo en ese momento.
-
-**3.7.2 Qué se sincroniza y cómo (ver también §4.4):** todo `data` se reparte en varias colecciones de Firestore bajo `academias/{academiaId}/` (una por `colegios`, `cursos`, `asignaciones`, `carnetListas`, `carnetOpciones`, las listas de participantes agrupadas por colegio+curso+año+grupo, y las 6 colecciones de papelera), nunca en un único documento — un documento de Firestore tiene un límite de 1 MiB, y `data` completo puede superarlo con miles de participantes. Cada subida solo escribe los documentos que cambiaron (diff contra una línea base local), nunca todo de una vez.
-
-**3.7.3 Indicador de estado:** pie del sidebar, botón `#sync-status-btn` (`renderSyncStatus()` en `script.js`, suscrito a `Sync.onCambioEstado()`): "Nube no disponible" (sin adaptador — SDK bloqueado o sin internet), "Conectar con la nube" (adaptador disponible, dispositivo no vinculado), "Sincronizado ✓", "Sincronizando…", "Cambios pendientes ●", "Sin conexión ✕", "Error de sincronización ⚠". Funciona en claro/oscuro con las variables CSS existentes.
-
-**3.7.4 Si el SDK de Firebase no carga:** `window.Sync` existe igual (lo define `sync.js`, que no depende de Firebase) pero sin ningún adaptador registrado — `Sync.nubeDisponible()` devuelve `false`, el indicador muestra "Nube no disponible", y todo lo demás (login, Colegios, Generador, Carnets, Respaldo local) funciona exactamente igual que si este archivo no existiera. Nunca se lanza una excepción por esto (ver `firebase-config.js` y el inicio de `sync-firebase.js`).
+El comportamiento histórico de sincronización (Fase 2, commit `c0e1e4b`, 2026-10-06) queda documentado en la sección "Cambios — 2026-10-06" de este mismo archivo para referencia futura.
 
 ---
 
