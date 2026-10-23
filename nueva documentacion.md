@@ -1,7 +1,7 @@
 # Organizador Moodle — Documentación (versión 5, verificada contra el código)
 
-**Fecha de verificación:** 2026-10-06
-**Commit base (v5):** `2759783` — árbol limpio al comienzo de esta versión del documento.
+**Fecha de verificación:** 2026-10-06 (contenido técnico) · **2026-10-22** (estado de commits reconciliado, ver "Cambios — 2026-10-22" abajo).
+**Commit base (v5):** `2759783` — árbol limpio al comienzo de esta versión del documento. **HEAD actual verificado el 2026-10-22: `cb928be`**, `main` al día con `origin/main`, árbol de trabajo limpio.
 **Cambios en árbol de trabajo (2026-10-09, pendientes de commit):** exportaciones PDF/XLSX de participantes y correcciones de contenido (sin conteos, sin resumen, sin nombre de academia en PDF individual). Ver secciones "Cambios — 2026-10-09" abajo.
 **Cambios en árbol de trabajo (2026-10-06, pendientes de commit):** habilitar "Importar CSV" para Cleveland con carga fiel (`importarCSVConservarDatos`). Ver sección "Cambios — 2026-10-06" abajo.
 **Commit base de la v4:** `be0f135`. Entre esos dos puntos se aplicaron y confirmaron tres commits:
@@ -12,6 +12,25 @@
 **Verificado por:** lectura directa de todos los archivos de `Organizador_moodle/` y diff completo contra `be0f135`. La v4 ya documentaba correctamente las funciones de los commits `7479d08` y `a47a813`; esta versión actualiza las referencias de estado de commit, elimina menciones a archivos INSTRUCCION borrados, corrige el fragmento de código de `showView()`, y actualiza tablas de líneas y §12.
 
 > **Principio rector: el código manda.** Este documento describe lo que está implementado en el código actual (árbol de trabajo), no lo que se intentó implementar ni lo que dice un documento más viejo.
+
+---
+
+## Cambios — 2026-10-22 (verificación de estado de commits + creación de `CLAUDE.md`)
+
+Sesión de solo lectura (análisis completo del repositorio para crear `CLAUDE.md` en la raíz; ver ese archivo para el índice y las reglas operativas). Hallazgos sobre este documento:
+
+- **`git status` limpio, `main` al día con `origin/main`, HEAD = `cb928be`.** Todas las secciones "Cambios — ..." de este documento que estaban marcadas **"pendientes de commit"** ya están confirmadas en el historial de git (se verificó con `git show --stat` y `grep` de las funciones nombradas en cada sección):
+  - "Fase 2: sincronización con Firebase + base de datos portable" → commit `c0e1e4b`.
+  - "Correcciones scroll y sidebar" + "Habilitar Importar CSV para Cleveland" → commit `aa1b8e9`.
+  - "Modo agregar estudiantes a una lista existente" (2026-10-08) → commit `ff8bd17`.
+  - "Exportaciones PDF/XLSX de participantes" (2026-10-09) → commit `a38e43e`.
+  - "Corrección: selector de Participantes y nivel" (2026-10-09c) → commit `4dee9e5`.
+  - "Editar nombre y apellido conservando usuario" (2026-10-11) y "Cambiar sufijo de colegio" (2026-10-11b) → **ambas** en el commit `cf9e028` ("nuevos cambios", 2026-10-14), confirmado con `grep` de `_aplicarEdicionNombre`, `construirPlanCambioSufijo` y `aplicarPlanCambioSufijo` en el diff de ese commit.
+  - No se encontró ningún cambio de código adicional sin commit en el árbol de trabajo actual.
+- **`Organizador_moodle/firebase-config.js` ya tiene credenciales reales** (no los marcadores `TU_..._AQUI` que describen §8.4 y el paso 5 de "Pasos manuales pendientes" más abajo). Esto no confirma que los demás pasos manuales de consola (Firestore/Auth habilitados, las 3 cuentas de nube, sus documentos `auth_map`, reglas publicadas) ya se hayan hecho — queda como pregunta abierta para el dueño (ver `CLAUDE.md` §14). Es el candidato más probable a causa real de "Error de sincronización" (§3.7.3): un error de reglas/autorización o de cuota de Firestore cae hoy en el estado genérico `'error'`, porque `esErrorDeRed()` (`sync.js`) solo reconoce mensajes con `network`/`unavailable`/`offline`/`failed-precondition`.
+- **Conteos de líneas crecieron de nuevo** desde la última actualización de §2: `script.js` 3552 líneas (antes 3087), `index.html` 1068 líneas (antes 977). No se reescribió la tabla de §2 en esta pasada (fuera del alcance de esta sesión, que no debía reescribir secciones grandes) — señalado aquí para que la próxima sesión que toque `script.js`/`index.html` la actualice de paso.
+- **`README.md` (raíz) está roto**: enlaza a `documentacion_organizador_moodle.md`, que ya no existe (fue reemplazado por este documento en `2759783`). No se corrigió (fuera del alcance: esta sesión solo podía crear `CLAUDE.md` y actualizar este archivo).
+- **Hallazgo de seguridad fuera del alcance de este documento, pero crítico**: `Workflows/*.md` contiene un token real de la API REST de Moodle en texto plano, commiteado en git. No se reproduce aquí. Ver `CLAUDE.md` §14, punto 6 — se recomienda rotarlo.
 
 ---
 
