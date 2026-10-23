@@ -14,11 +14,11 @@ Nació como un **Organizador de Moodle**: una web estática (HTML+CSS+JS, sin bu
 
 ---
 
-## 2. Estado actual (verificado 2026-10-22)
+## 2. Estado actual (verificado 2026-10-23)
 
-- **Rama:** `main`. **Al día con `origin/main`** (verificado 2026-10-23, quinta sesión: `git fetch` → sin cambios nuevos; `git status -sb` → `## main...origin/main`; cambios locales sin commit en `CLAUDE.md`, `docs/diseno_base_de_datos_v2.md`, `database/postgres/schema.sql`, `database/postgres/tests/test_integridad.sql`).
-- **Commit actual (HEAD):** `4c3ac5b` — "Revision de mudanza a servidor" (pusheado desde Windows, posterior al retiro de Firebase).
-- **Último commit de código de la app:** `7b635d2` (2026-10-23, misma sesión). Antes: `cf9e028` "nuevos cambios" (2026-10-14) — edición de nombre conservando usuario + cambio de sufijo de colegio.
+- **Rama:** `main`. **Al día con `origin/main`** (verificado 2026-10-23, sexta sesión: `git fetch` → sin cambios nuevos; `git status -sb` → `## main...origin/main`; cambios locales sin commit en `CLAUDE.md`, `docs/diseno_base_de_datos_v2.md`, `database/postgres/schema.sql`, `database/postgres/tests/test_integridad.sql`).
+- **Commit actual (HEAD):** `d4a7ba2` — "tests de prueba" (última sesión, incluye BD v2.5 + CLAUDE.md).
+- **Último commit de código de la app:** `7b635d2` (2026-10-23). Antes: `cf9e028` "nuevos cambios" (2026-10-14) — edición de nombre conservando usuario + cambio de sufijo de colegio.
 - **Producción:** pendiente de deploy (Firebase Hosting) tras los cambios de la Fase 3. `.firebaserc` y el bloque `hosting` de `firebase.json` se conservan para seguir desplegando en Firebase Hosting hasta migrar al VPS.
 - **Herramientas:** `node v24.19.0`, `npm 11.17.0`, `firebase-tools 15.32.1`, `git 2.55.0.windows.5`.
 
@@ -269,6 +269,7 @@ Reconstruido desde `git log` (historial real, hashes verificados). Agrupado por 
 | **2026-10-23** | **sin commit** | **docs+sql: diseño de BD v2.3 — seguridad RLS, sync real, cifrado, progreso** | `docs/diseno_base_de_datos_v2.md` (v2.2→v2.3), `database/postgres/schema.sql` (v2.3), `database/postgres/tests/test_integridad.sql` (22 pruebas, ejecutadas en PG16), `CLAUDE.md` (§2+§15) | `git restore docs/diseno_base_de_datos_v2.md database/postgres/schema.sql database/postgres/tests/test_integridad.sql CLAUDE.md` (antes de `git add`) |
 | **2026-10-23** | **sin commit** | **docs+sql: diseño de BD v2.4 — rango unidades, login hardening, ausente_en, sync periódico** | `docs/diseno_base_de_datos_v2.md` (v2.3→v2.4), `database/postgres/schema.sql` (v2.4: `ausente_en`, `login_usuario()` hardening, `sync_queue`), `database/postgres/tests/test_integridad.sql` (tests 9/9b/9c reescritos + 9_EMPTY_RANGO/9_RANGO_COLEGIO/20/21/22 nuevos, 33 checks totales ejecutados en PG16), `CLAUDE.md` (§2+§15) | `git restore docs/diseno_base_de_datos_v2.md database/postgres/schema.sql database/postgres/tests/test_integridad.sql CLAUDE.md` (antes de `git add`) |
 | **2026-10-23** | **sin commit** | **docs+sql: diseño de BD v2.5 — ausente_en safeguards, sync_worker, publicada_en propagación** | `docs/diseno_base_de_datos_v2.md` (v2.4→v2.5), `database/postgres/schema.sql` (v2.5: `ausencias_consecutivas`, `uk_sync_queue_pendiente` extendido a `en_proceso`, REVOKE TEMPORARY corregido, `sync_worker` DDL), `database/postgres/tests/test_integridad.sql` (TEST 22 extendido + TEST 23/24/25/26 nuevos, 46 NOTICEs ejecutados en PG16), `CLAUDE.md` (§2+§15) | `git restore docs/diseno_base_de_datos_v2.md database/postgres/schema.sql database/postgres/tests/test_integridad.sql CLAUDE.md` (antes de `git add`) |
+| **2026-10-23** | **sin commit** | **docs+sql: diseño de BD v2.6 — CHECK ausente_en, sync_aplicar_estructura, sync_worker real DDL+RLS** | `docs/diseno_base_de_datos_v2.md` (v2.5→v2.6), `database/postgres/schema.sql` (v2.6: `chk_sec_ausente`/`chk_act_ausente`, función `sync_aplicar_estructura`, función `sync_inicializar_publicada_en`, `sync_worker` DDL real con GRANTs por columna y 9 políticas RLS), `database/postgres/tests/test_integridad.sql` (PRE-TEST A/B + TESTS 23-26 reescritos con funciones + TESTS 27-32 sync_worker, 58 NOTICEs PG16), `CLAUDE.md` (§2+§15) | `git restore docs/diseno_base_de_datos_v2.md database/postgres/schema.sql database/postgres/tests/test_integridad.sql CLAUDE.md` (antes de `git add`) |
 
 ---
 

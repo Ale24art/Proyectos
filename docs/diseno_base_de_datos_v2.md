@@ -1,9 +1,21 @@
-# Diseño de base de datos v2.5 — Sistema de control de estudio
+# Diseño de base de datos v2.6 — Sistema de control de estudio
 
-**Versión:** 2.5 · **Fecha:** 2026-10-23 · **Autor:** Claude Code (ausente_en safeguards, sync_worker rol, publicada_en propagación, uk_sync_queue_pendiente en_proceso)
+**Versión:** 2.6 · **Fecha:** 2026-10-23 · **Autor:** Claude Code (CHECK constraints, sync_aplicar_estructura, sync_inicializar_publicada_en, sync_worker real DDL + RLS)
 **Estado:** borrador para revisión del dueño del proyecto
 
 > **Principio:** el código manda. Lo documentado aquí se verificó contra el código real del repositorio. Las secciones marcadas con ⚠ "Pendiente de confirmar" requieren decisión del dueño antes de implementar; el resto refleja decisiones ya tomadas o propuestas aceptadas en la revisión v2.
+
+---
+
+## Cambios respecto a v2.5
+
+| Sección | Qué cambió en v2.6 |
+|---|---|
+| `database/postgres/schema.sql` | `v2.6`; `CONSTRAINT chk_sec_ausente CHECK (ausente_en IS NULL OR ausencias_consecutivas >= 2)` en `secciones_moodle`; `CONSTRAINT chk_act_ausente ...` en `actividades_moodle`; función `sync_aplicar_estructura(p_asignacion, p_cmids BIGINT[], p_token_ok)` SECURITY INVOKER; función `sync_inicializar_publicada_en(p_asignacion)` SECURITY INVOKER; `sync_worker` DDL real (CREATE ROLE + GRANTs por columna + 9 políticas RLS) — ya no es propuesta comentada; REVOKE/GRANT EXECUTE en funciones |
+| `database/postgres/tests/test_integridad.sql` | Part 1: actividad 15 fija `ausencias_consecutivas=2` (requerido por CHECK); `setval` para sincronizar secuencias tras INSERTs explícitos; PRE-TEST A (verifica CHECK activo), PRE-TEST B (verifica función existe); TESTS 23-25 reescritos para llamar `sync_aplicar_estructura` con entradas reales; TEST 26 reescrito para llamar `sync_inicializar_publicada_en`; PARTE 3b: TESTS 27-32 para `sync_worker` (0 filas sin academia, aislamiento de academia, 5 operaciones del §3.4, password_enc/enc_iv denegados, tablas sensibles denegadas); 58 NOTICEs totales, todos OK contra PostgreSQL 16 |
+| §3.3 | `sync_worker` pasa de propuesta comentada a DDL real; corrección del razonamiento: la separación de academias la impone la RLS (igual que `app_user`), no los GRANTs de tabla; `consultado_en` del §3.4 mapeado a `fecha_consulta_moodle` en el esquema; CHECK constraints documentados en ambas tablas de estructura |
+| §3.6 | Lógica del worker reemplazada por llamadas reales a `sync_aplicar_estructura` y `sync_inicializar_publicada_en`; invariante CHECK documentado |
+| §6 | Salida psql actualizada a v2.6: 58 NOTICEs, todos OK |
 
 ---
 
@@ -555,28 +567,49 @@ REVOKE TEMPORARY ON DATABASE control_estudio FROM PUBLIC;
 -- este REVOKE elimina el vector de ataque por completo.
 ```
 
-**Rol del worker de sincronización (`sync_worker`):**
+**Rol del worker de sincronización (`sync_worker`) — DDL real en `schema.sql`:**
 
-El proceso worker del VPS que llama a la API de Moodle y escribe el progreso en la BD debe usar su propio rol de base de datos, **distinto de `app_user`** (el rol de la API). DDL propuesto en `schema.sql`; justificación:
+El proceso worker del VPS que llama a la API de Moodle y escribe el progreso en la BD usa su propio rol de base de datos, **distinto de `app_user`** (el rol de la API). Justificación:
 
-1. **Acceso multi-academia simultáneo.** El sync completo nocturno procesa todas las asignaciones de ambas academias en paralelo. Con `app_user`, habría que poner `app.academia_ids = 'tecno,cleveland'`, que es la misma vista que un gerente, y daría al worker acceso completo a todos los datos vía RLS. `sync_worker` no usa la variable de sesión de academia: su acceso está acotado exactamente por las tablas que tiene concedidas (queue, sync_log, secciones, actividades, progreso) y nada más.
+1. **Mínimo privilegio.** El worker no necesita leer `password_enc`, `enc_iv`, `carnet_listas`, `auditoria` ni `sesiones`. `sync_worker` tiene GRANTs columna a columna en `matriculas` (excluye explícitamente esas columnas) y GRANTs UPDATE solo sobre los campos que el §3.4 exige (`moodle_user_id`, `primer_acceso`, `ultimo_acceso`, `ultimo_acceso_curso`, `fecha_consulta_moodle`).
 
-2. **Mínimo privilegio.** El worker no necesita leer `password_enc`, `carnet_listas`, `auditoria` ni `sesiones`. Con `sync_worker` esas tablas simplemente no están en su `GRANT`.
+2. **Separación de vectores de ataque.** Si se compromete la API (`app_user`), el atacante no obtiene permisos del worker. El inverso también aplica.
 
-3. **Separación de vectores de ataque.** Si se compromete el rol de la API, el atacante no obtiene automáticamente permisos del worker ni acceso a la cola de sincronización. El inverso también aplica.
+3. **Trazabilidad.** Los logs de PostgreSQL distinguen operaciones del worker vs. de la API.
 
-4. **Trazabilidad.** Los logs de PostgreSQL y la tabla `auditoria` distinguen claramente qué operaciones vinieron del worker vs. de la API.
+**Corrección del razonamiento respecto a v2.5:** el razonamiento anterior decía que `sync_worker` no usa RLS, que su acceso está acotado "por las tablas que tiene concedidas, no por la variable de sesión". Eso era incorrecto. **La separación de academias la impone la RLS, igual que para `app_user`.** `sync_worker` tiene políticas RLS en las 9 tablas que accede, con el mismo patrón (`app.academia_ids`). La diferencia con `app_user` está en los GRANTs de tabla y columna (mínimo privilegio), no en saltarse la RLS.
 
+El worker procesa **un trabajo por transacción** con `SET LOCAL`:
 ```sql
--- Propuesta DDL (ejecutar como superusuario antes de desplegar el worker):
-CREATE ROLE sync_worker NOLOGIN;
-GRANT USAGE ON SCHEMA public TO sync_worker;
-GRANT SELECT, INSERT, UPDATE ON sync_queue      TO sync_worker;
-GRANT SELECT, INSERT, UPDATE ON moodle_sync_log TO sync_worker;
-GRANT SELECT, UPDATE         ON secciones_moodle, actividades_moodle TO sync_worker;
-GRANT SELECT, INSERT, UPDATE ON progreso_actividades TO sync_worker;
-GRANT SELECT ON asignaciones_moodle, matriculas, cursos_modelo TO sync_worker;
--- El worker NO tiene acceso a: password_enc, carnet_listas, usuarios_app, sesiones, auditoria.
+BEGIN;
+SET LOCAL "app.academia_ids" = 'tecno';   -- una academia por trabajo
+-- operaciones del sync para esa academia (secciones, actividades, progreso, etc.)
+COMMIT;
+```
+Sin `SET LOCAL` → `current_setting` devuelve NULL → `ANY(NULL)` = NULL → 0 filas (fail-safe).
+
+**GRANTs reales en `schema.sql` (resumen):**
+
+| Tabla | Operaciones | Restricciones |
+|---|---|---|
+| `sync_queue` | SELECT, INSERT, UPDATE | — |
+| `moodle_sync_log` | SELECT, INSERT, UPDATE | — |
+| `secciones_moodle` | SELECT, INSERT, UPDATE | — |
+| `actividades_moodle` | SELECT, INSERT, UPDATE | — |
+| `progreso_actividades` | SELECT, INSERT, UPDATE | — |
+| `asignaciones_moodle` | SELECT; UPDATE (moodle_course_id) | Solo columna moodle_course_id |
+| `grupos` | SELECT; UPDATE (unidad_actual_auto) | Solo columna unidad_actual_auto |
+| `cursos_modelo` | SELECT | Solo lectura |
+| `matriculas` | SELECT (27 columnas†); UPDATE (5 columnas) | Sin password_enc ni enc_iv |
+
+†`password_enc` y `enc_iv` **no** están en el GRANT SELECT → cualquier SELECT que los incluya falla con `insufficient_privilege`.
+
+**Políticas RLS de `sync_worker` (9 tablas, mismo patrón):**
+```sql
+CREATE POLICY pol_secciones_worker ON secciones_moodle FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+-- (Igual para actividades_moodle, asignaciones_moodle, matriculas, progreso_actividades,
+--  grupos, moodle_sync_log, sync_queue, cursos_modelo)
 ```
 
 ---
@@ -881,18 +914,25 @@ Al arrancar el sistema, algunas secciones ya ocultas (visible=FALSE) pueden tene
 
 Se proponen dos mecanismos de inicialización (no excluyentes):
 
-1. **Automático al importar completados:** si el sync encuentra un registro de `moodle_completado` > 0 para una actividad con `publicada_en IS NULL`, eso es evidencia de que la actividad estuvo visible alguna vez. El sistema fija `publicada_en = NOW()` en esa actividad **y también propaga `publicada_en = NOW()` a su sección** si la sección aún tiene `publicada_en IS NULL`. La razón de la propagación: si un estudiante completó una actividad, la sección que la contiene también debió estar visible en ese momento.
+1. **Automático al importar completados — función `sync_inicializar_publicada_en` (v2.6):** si hay registros de `moodle_completado > 0` para actividades con `publicada_en IS NULL`, eso es evidencia de que esas actividades estuvieron visibles. La función fija `publicada_en = NOW()` en esas actividades y propaga a sus secciones si también tienen `publicada_en IS NULL`.
 
    ```sql
-   -- Lógica del worker al encontrar moodle_completado > 0 para actividad con publicada_en IS NULL:
-   UPDATE actividades_moodle
-   SET publicada_en = NOW()
-   WHERE id = :actividad_id AND publicada_en IS NULL;
+   -- Ejemplo de llamada al inicializar el sistema:
+   SELECT sync_inicializar_publicada_en('asig_r3_ceu_26');
+   ```
 
-   -- Propagar a la sección:
-   UPDATE secciones_moodle
-   SET publicada_en = NOW()
-   WHERE id = :seccion_id AND publicada_en IS NULL;
+   La función itera por asignación (no actividad a actividad), lo que evita N+1 UPDATEs:
+   ```sql
+   -- 1. Actividades con evidencia de completados
+   UPDATE actividades_moodle a SET publicada_en = NOW()
+   WHERE a.asignacion_id = p_asignacion AND a.publicada_en IS NULL
+     AND EXISTS (SELECT 1 FROM progreso_actividades pa
+                 WHERE pa.actividad_id = a.id AND pa.moodle_completado > 0);
+   -- 2. Propagar a secciones
+   UPDATE secciones_moodle s SET publicada_en = NOW()
+   WHERE s.asignacion_id = p_asignacion AND s.publicada_en IS NULL
+     AND EXISTS (SELECT 1 FROM actividades_moodle a
+                 WHERE a.seccion_id = s.id AND a.publicada_en IS NOT NULL);
    ```
 
 2. **Acción manual del admin "Marcar como publicada":** la interfaz del admin permite seleccionar secciones/actividades y marcar explícitamente `publicada_en = NOW()`. Útil cuando el docente confirma que una unidad fue efectivamente impartida aunque el sistema no la vio nunca como visible.
@@ -907,48 +947,45 @@ ausente_en TIMESTAMPTZ DEFAULT NULL
 -- El sync la rellena cuando la actividad/sección desaparece de core_course_get_contents.
 ```
 
-**Lógica del sync para detectar ausentes (salvaguardas v2.5):**
+**Lógica del sync para detectar ausentes — función `sync_aplicar_estructura` (v2.6):**
 
-```
-(Salvaguarda a) Antes de ejecutar la detección, verificar:
-  · len(cmids_recibidos) > 0  →  respuesta no vacía
-  · El chequeo de capacidad del token pasó (el token puede ver secciones ocultas)
-  Si no se cumplen AMBAS condiciones: omitir la detección completamente.
-  Razón: una respuesta vacía puede ser un error de red, un timeout o una respuesta
-  con 0 secciones por falta de permisos del token. Procesarla como "todo borrado"
-  marcaría como ausentes actividades que simplemente no se pudieron leer.
+Las salvaguardas de ausentes están implementadas en la función SQL `sync_aplicar_estructura(p_asignacion TEXT, p_cmids BIGINT[], p_token_ok BOOLEAN)` en `schema.sql`. El worker la llama después de recibir la respuesta de `core_course_get_contents`:
 
-cmids_presentes = set(a.moodle_cmid for a in respuesta)
-cmids_en_bd     = SELECT moodle_cmid, ausente_en, ausencias_consecutivas
-                  FROM actividades_moodle WHERE asignacion_id = :id
-
-Para cada cmid en cmids_en_bd:
-
-  Si cmid EN cmids_presentes:
-    → (Salvaguarda c: reaparición)
-      UPDATE actividades_moodle
-      SET ausencias_consecutivas = 0, ausente_en = NULL
-      WHERE asignacion_id = :id AND moodle_cmid = :cmid
-        AND (ausencias_consecutivas > 0 OR ausente_en IS NOT NULL)
-      — Nota: visible=FALSE en la respuesta NO equivale a ausencia. Si el token
-        tiene la capacidad correcta, las actividades ocultas siguen apareciendo
-        en la respuesta y no se marcan como ausentes.
-
-  Si cmid NO EN cmids_presentes:
-    → (Salvaguarda b: contador de ausencias consecutivas)
-      UPDATE actividades_moodle
-      SET ausencias_consecutivas = ausencias_consecutivas + 1
-      WHERE asignacion_id = :id AND moodle_cmid = :cmid AND ausente_en IS NULL
-
-      Leer ausencias_consecutivas actualizado:
-      Si ausencias_consecutivas >= 2:
-        UPDATE actividades_moodle SET ausente_en = NOW()
-        WHERE asignacion_id = :id AND moodle_cmid = :cmid AND ausente_en IS NULL
-
-  (el progreso acumulado en progreso_actividades se conserva como historial)
+```sql
+-- Ejemplo de llamada en el worker:
+SELECT sync_aplicar_estructura(
+  'asig_r3_ceu_26',
+  ARRAY[1001, 1002, 1003]::BIGINT[],   -- moodle_cmid recibidos
+  TRUE                                   -- token verificado
+);
 ```
 
-Las mismas tres salvaguardas aplican a `secciones_moodle` (campo `ausencias_consecutivas` y `ausente_en` también presentes).
+**Implementación de las tres salvaguardas:**
+
+```
+(Salvaguarda a) Si p_token_ok IS NOT TRUE OR p_cmids IS NULL OR array vacío → RETURN.
+
+(Salvaguarda c) Para actividades con moodle_cmid = ANY(p_cmids) AND visible=TRUE:
+  → SET ausencias_consecutivas=0, ausente_en=NULL
+    WHERE (ausencias_consecutivas > 0 OR ausente_en IS NOT NULL)
+  → Si visible=FALSE: NUNCA se resetea (nunca se marca una actividad oculta como presente).
+    Recuperación: el docente vuelve a hacer visible la actividad; el próximo sync la ve
+    con visible=TRUE y la función la reactiva.
+
+(Salvaguarda b) Para actividades con moodle_cmid NOT IN p_cmids AND ausente_en IS NULL:
+  → SET ausencias_consecutivas = ausencias_consecutivas + 1
+  → Si ausencias_consecutivas >= 2: SET ausente_en = NOW()
+```
+
+**Invariante del esquema (v2.6):** el CHECK constraint garantiza consistencia a nivel de BD incluso ante UPDATEs directos (fuera de la función):
+```sql
+CONSTRAINT chk_act_ausente CHECK (ausente_en IS NULL OR ausencias_consecutivas >= 2)
+-- también: chk_sec_ausente en secciones_moodle
+```
+
+El mismo patrón aplica a `secciones_moodle` (tiene `ausencias_consecutivas` y `ausente_en`), aunque la función implementada en v2.6 opera sobre `actividades_moodle`. Una función análoga para secciones seguiría el mismo diseño.
+
+El progreso acumulado en `progreso_actividades` se conserva como historial cuando una actividad se marca ausente.
 
 Las actividades con `ausente_en IS NOT NULL` se **excluyen de los elegibles** en todas las consultas de avance. El progreso ya registrado en `progreso_actividades` no se borra (es historial).
 
@@ -1252,7 +1289,7 @@ El backend VPS sincroniza el progreso via cron o disparado manualmente por admin
 
 ## 6. Lo que se leyó y verificó / lo que NO se pudo verificar
 
-### Verificado contra el código o ejecutado (v2.5)
+### Verificado contra el código o ejecutado (v2.6)
 
 | Elemento | Dónde | Verificado |
 |---|---|---|
@@ -1274,11 +1311,11 @@ El backend VPS sincroniza el progreso via cron o disparado manualmente por admin
 | `ejemplo_ficticio.json` — formato real del respaldo | `database/scripts/ejemplo_ficticio.json` completo | ✅ |
 | Tests de `database/scripts/` | `test_agregar_estudiantes` (32/32), `test_cambiar_sufijo` (18/18), `test_sync_core` (7/7), `test_sync_dos_dispositivos` (2/2) | ✅ (en el entorno Linux con Node 20) |
 | `test_idavuelta.js` | `database/scripts/test_idavuelta.js` | ❌ Falla en Node 20 con `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. Requiere Node ≥ 22. Correr desde Windows (Node 24.19.0). |
-| `database/postgres/schema.sql` (v2.5) | `database/postgres/schema.sql` | ✅ **ejecutado contra PostgreSQL 16** (Docker, sin errores) |
-| `database/postgres/tests/test_integridad.sql` (v2.5) | `database/postgres/tests/test_integridad.sql` | ✅ **ejecutado contra PostgreSQL 16**: 46 NOTICEs, **todos OK** — ver salida real abajo |
+| `database/postgres/schema.sql` (v2.6) | `database/postgres/schema.sql` | ✅ **ejecutado contra PostgreSQL 16** (Docker, sin errores) |
+| `database/postgres/tests/test_integridad.sql` (v2.6) | `database/postgres/tests/test_integridad.sql` | ✅ **ejecutado contra PostgreSQL 16**: 58 NOTICEs, **todos OK** — ver salida real abajo |
 | `test_idavuelta.js` (en Node 20) | `database/scripts/test_idavuelta.js` | ❌ **FALLA en Node 20.19.2**: `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. Requiere Node ≥ 22. No hay Node 22+ disponible en este entorno (Linux/Crostini). El entorno Windows tiene Node 24.19.0 — correr el test desde Windows. |
 
-**Salida real de psql — tests/test_integridad.sql contra PostgreSQL 16:**
+**Salida real de psql — tests/test_integridad.sql contra PostgreSQL 16 (v2.6):**
 ```
 TEST 1 OK: moodle_completado=4 rechazado por CHECK (0..3)
 TEST 2 OK: FK (grupo_id, asignacion_id) impide cruzar asignaciones
@@ -1305,11 +1342,13 @@ TEST 21 OK: ausente_en excluye actividad 15 → elegibles=4 (acto 15 no cuenta)
 TEST 22 OK (a): pendiente+pendiente rechazado por uk_sync_queue_pendiente
 TEST 22 OK (b): encolar mientras hay uno en_proceso rechazado
 TEST 22 OK (c): encolar tras completado permitido (2 filas en historial)
-TEST 23 OK (a): 1 miss → ausencias_consecutivas=1, ausente_en IS NULL (no marcada)
-TEST 23 OK (b): 2 misses consecutivos → ausente_en IS NOT NULL (marcada), consecutivas=2
-TEST 24 OK: reaparición limpia ausente_en=NULL y ausencias_consecutivas=0
-TEST 25 OK: actividad oculta (visible=FALSE) presente en respuesta → ausente_en=NULL, consecutivas=0
-TEST 26 OK: publicada_en propagada a actividad y sección al inicializar por completados
+PRE-TEST A OK: CHECK chk_act_ausente activo — ausente_en NOT NULL con consecutivas=0 rechazado
+PRE-TEST B OK: sync_aplicar_estructura existe y acepta array vacío (salvaguarda a: no hace nada)
+TEST 23 OK (a): 1 miss → ausencias_consecutivas=1, ausente_en IS NULL (salvaguarda b: no marca aún)
+TEST 23 OK (b): 2 misses → ausente_en IS NOT NULL, consecutivas=2 (salvaguarda b: marcada)
+TEST 24 OK: reaparición (visible=TRUE) → ausente_en=NULL, consecutivas=0 (salvaguarda c)
+TEST 25 OK: visible=FALSE en respuesta → no reseteada (ausente_en IS NOT NULL, consecutivas=2)
+TEST 26 OK: sync_inicializar_publicada_en propagó publicada_en a actividad y sección
 TEST 6 OK: academia_ids vacío → 0 filas en las 19 tablas con RLS
 TEST 6b OK: academia=tecno → 2 colegios visibles, 0 de cleveland
 TEST 6b OK: academia=tecno → 4 estudiantes visibles
@@ -1325,6 +1364,16 @@ TEST 18b OK: UPDATE en auditoria rechazado (sin privilegio)
 TEST 18c OK: DELETE en auditoria rechazado (sin privilegio)
 TEST 19 OK: login_usuario() devuelve academia_ids="tecno" sin depender de la sesión
 TEST 20 OK: login_usuario() usa public.usuarios_app (nombre="Admin Tecno"), no la tabla temporal
+TEST 27 OK: sync_worker sin academia → 0 filas en las 7 tablas accesibles
+TEST 28 OK: sync_worker academia=tecno → 4 secciones, 6 actividades, 4 matrículas, 0 ajenas
+TEST 29a OK: sync_worker puede UPDATE moodle_course_id en asignaciones_moodle
+TEST 29b OK: sync_worker puede UPDATE moodle_user_id en matriculas
+TEST 29c OK: sync_worker puede INSERT en secciones_moodle (id=6)
+TEST 29d OK: sync_worker puede INSERT en actividades_moodle (id=21)
+TEST 29e OK: sync_worker puede UPDATE en progreso_actividades
+TEST 30 OK: password_enc denegado para sync_worker
+TEST 31 OK: enc_iv denegado para sync_worker
+TEST 32 OK: sync_worker no puede leer usuarios_app, sesiones ni auditoria (3 denegados)
 ```
 
 ### NO se pudo verificar
@@ -1343,25 +1392,34 @@ TEST 20 OK: login_usuario() usa public.usuarios_app (nombre="Admin Tecno"), no l
 
 **ESPERANDO APROBACIÓN**
 
-### Mensaje de commit sugerido para v2.5 (no ejecutar)
+### Mensaje de commit sugerido para v2.6 (no ejecutar)
 
 ```
-docs+sql: diseño de BD v2.5 — ausente_en safeguards, sync_worker, publicada_en propagación
+docs+sql: diseño de BD v2.6 — CHECK ausente_en, sync_aplicar_estructura, sync_worker real
 
-Schema v2.5: ausencias_consecutivas SMALLINT NOT NULL en secciones_moodle y
-actividades_moodle; uk_sync_queue_pendiente extendido a estado IN
-('pendiente','en_proceso'); REVOKE TEMPORARY corregido (PUBLIC, no solo
-superusuarios); rol sync_worker documentado con DDL propuesto y justificación
-(acceso multi-academia, mínimo privilegio, separación de vectores).
+Schema v2.6: CONSTRAINT chk_sec_ausente / chk_act_ausente en secciones_moodle y
+actividades_moodle (ausente_en IS NULL OR ausencias_consecutivas >= 2);
+función sync_aplicar_estructura(asignacion, cmids BIGINT[], token_ok) SECURITY
+INVOKER con salvaguardas (a)/(b)/(c): respuesta vacía o token inválido → no op;
+incrementa contador de ausentes; marca ausente_en al llegar a 2; nunca resetea
+actividades ocultas (visible=FALSE); función sync_inicializar_publicada_en para
+propagación de publicada_en desde evidencia de completados.
 
-Tests (46 NOTICEs, todos OK contra PostgreSQL 16):
-- TEST 22 extendido a (a/b/c): cubre en_proceso + post-completado.
-- TEST 23: 1 miss no marca ausente; 2 consecutivos sí marcan.
-- TEST 24: reaparición de actividad limpia ausente_en y contador.
-- TEST 25: visible=FALSE en respuesta no marca ausente.
-- TEST 26: publicada_en propagada a sección al inicializar por completados.
+sync_worker DDL real (era propuesta comentada): CREATE ROLE + GRANTs por columna
+en matriculas (sin password_enc ni enc_iv) + UPDATE restringido a 5 columnas del
+§3.4 + 9 políticas RLS (mismo patrón que app_user, usa SET LOCAL app.academia_ids
+una academia por transacción). Corrección del razonamiento: la separación de
+academias la impone la RLS, no los GRANTs de tabla.
 
-Docs: salvaguardas (a)/(b)/(c) para ausente_en documentadas con lógica
-completa del worker; propagación de publicada_en a sección documentada en §3.6;
-§4.4 etiqueta v2.2 → v2.5; §6 salida real actualizada; commit message corregido.
+Tests (58 NOTICEs, todos OK contra PostgreSQL 16):
+- Part 1: actividad 15 ausencias_consecutivas=2 (CHECK lo requiere); setval para
+  sincronizar secuencias tras INSERTs explícitos.
+- PRE-TEST A: verifica CHECK activo. PRE-TEST B: verifica función existe.
+- TEST 23-25 reescritos: llaman sync_aplicar_estructura con entradas reales.
+- TEST 26 reescrito: llama sync_inicializar_publicada_en.
+- TEST 27-32: sync_worker (0 filas sin academia; aislamiento RLS; 5 ops §3.4;
+  password_enc/enc_iv denegados; usuarios_app/sesiones/auditoria denegados).
+
+Docs: §3.3 sync_worker DDL real + razonamiento RLS corregido; §3.6 funciones
+reales documentadas; §6 salida psql actualizada a 58 NOTICEs.
 ```

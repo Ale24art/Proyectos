@@ -1,5 +1,5 @@
 -- ══════════════════════════════════════════════════════════════════
--- PRUEBAS DE INTEGRIDAD Y RLS — Esquema v2.4
+-- PRUEBAS DE INTEGRIDAD, RLS Y SYNC — Esquema v2.6
 -- Todos los datos son ficticios. Ningún nombre real de estudiante.
 --
 -- Cómo ejecutar:
@@ -75,16 +75,17 @@ VALUES
   (4, 'asig_r3_cej_26', 'tecno', 201, 1, 1, 'Unidad 1: Intro',              TRUE,  NOW());
 
 -- actividad 13: seccion 3 está oculta pero publicada_en IS NOT NULL → sigue siendo elegible
--- actividad 15: ausente_en IS NOT NULL → excluida de elegibles (Test 21)
+-- actividad 15: ausente_en IS NOT NULL, ausencias_consecutivas=2 → excluida de elegibles (Test 21)
+--   ausencias_consecutivas=2 es obligatorio cuando ausente_en IS NOT NULL (CHECK chk_act_ausente)
 INSERT INTO actividades_moodle
-  (id, seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo, tiene_finalizacion, visible, publicada_en, ausente_en)
+  (id, seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo, tiene_finalizacion, visible, publicada_en, ausente_en, ausencias_consecutivas)
 VALUES
-  (10, 1, 'asig_r3_ceu_26', 'tecno', 1001, 'h5pactivity', TRUE,  TRUE,  NOW(), NULL),
-  (11, 1, 'asig_r3_ceu_26', 'tecno', 1002, 'quiz',         TRUE,  TRUE,  NOW(), NULL),
-  (12, 2, 'asig_r3_ceu_26', 'tecno', 1003, 'assign',       TRUE,  TRUE,  NOW(), NULL),
-  (13, 3, 'asig_r3_ceu_26', 'tecno', 1004, 'h5pactivity',  TRUE,  FALSE, NOW(), NULL),  -- oculta, publicada
-  (14, 4, 'asig_r3_cej_26', 'tecno', 2001, 'quiz',         TRUE,  TRUE,  NOW(), NULL),
-  (15, 1, 'asig_r3_ceu_26', 'tecno', 1005, 'h5pactivity',  TRUE,  FALSE, NOW(), NOW());  -- ausente_en = ahora → excluida
+  (10, 1, 'asig_r3_ceu_26', 'tecno', 1001, 'h5pactivity', TRUE,  TRUE,  NOW(), NULL, 0),
+  (11, 1, 'asig_r3_ceu_26', 'tecno', 1002, 'quiz',         TRUE,  TRUE,  NOW(), NULL, 0),
+  (12, 2, 'asig_r3_ceu_26', 'tecno', 1003, 'assign',       TRUE,  TRUE,  NOW(), NULL, 0),
+  (13, 3, 'asig_r3_ceu_26', 'tecno', 1004, 'h5pactivity',  TRUE,  FALSE, NOW(), NULL, 0),  -- oculta, publicada
+  (14, 4, 'asig_r3_cej_26', 'tecno', 2001, 'quiz',         TRUE,  TRUE,  NOW(), NULL, 0),
+  (15, 1, 'asig_r3_ceu_26', 'tecno', 1005, 'h5pactivity',  TRUE,  FALSE, NOW(), NOW(), 2);  -- ausente_en IS NOT NULL (consecutivas=2)
 
 INSERT INTO estudiantes (id, academia_id, nombres, apellidos) VALUES
   ('est_ana',    'tecno', 'Ana',     'Gomez Perez'),
@@ -112,6 +113,11 @@ INSERT INTO progreso_actividades (matricula_id, actividad_id, asignacion_id, aca
 
 COMMIT;
 
+-- Sincronizar secuencias con los IDs explícitos insertados en Part 1.
+-- Las secuencias de secciones_moodle y actividades_moodle no avanzan con INSERT
+-- explícito; sin esto cualquier INSERT posterior con BIGSERIAL genera id=1 → conflicto.
+SELECT setval('secciones_moodle_id_seq',   (SELECT MAX(id) FROM secciones_moodle));
+SELECT setval('actividades_moodle_id_seq', (SELECT MAX(id) FROM actividades_moodle));
 
 -- ══════════════════════════════════════════════════════════════════
 -- PARTE 2: PRUEBAS DE INTEGRIDAD ESTRUCTURAL (superusuario)
@@ -745,58 +751,94 @@ BEGIN
 END $$;
 
 -- ─────────────────────────────────────────────────────────────────
--- TEST 23: respuesta vacía no marca ausentes (salvaguarda a + contador b)
+-- PRE-TEST A: verificar que CHECK chk_act_ausente está activo en v2.6
 --
--- Salvaguarda (a) es aplicación: si len(cmids_recibidos)==0 OR el chequeo de
--- capacidad del token falló, el worker no ejecuta la detección.
--- Esta prueba verifica la defensa de nivel BD: incluso si la detección corre
--- incorrectamente, 1 sola ausencia (ausencias_consecutivas=1) no marca ausente_en;
--- se requieren 2 consecutivas (salvaguarda b).
+-- Comportamiento esperado con el esquema ACTUAL (v2.6):
+--   → check_violation al intentar ausente_en IS NOT NULL con consecutivas=0
+-- Si este test genera RAISE EXCEPTION (no check_violation), significa que el
+-- esquema NO tiene el CHECK → retroceder a schema.sql y añadirlo.
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  BEGIN
+    -- Intentar insertar actividad con ausente_en IS NOT NULL y ausencias_consecutivas=0
+    -- Esto viola el invariante: ausente_en solo puede ser NOT NULL si consecutivas >= 2
+    INSERT INTO actividades_moodle
+      (seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo,
+       visible, publicada_en, ausente_en, ausencias_consecutivas)
+    VALUES (1, 'asig_r3_ceu_26', 'tecno', 9990, 'resource', TRUE, NOW(), NOW(), 0);
+    -- Si llega aquí: el esquema NO tiene CHECK → el invariante no se impone en BD
+    DELETE FROM actividades_moodle WHERE moodle_cmid = 9990 AND asignacion_id = 'asig_r3_ceu_26';
+    RAISE EXCEPTION 'PRE-TEST A FALLÓ: esquema permite ausente_en IS NOT NULL con consecutivas=0 (falta CHECK chk_act_ausente)';
+  EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE 'PRE-TEST A OK: CHECK chk_act_ausente activo — ausente_en NOT NULL con consecutivas=0 rechazado';
+  END;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- PRE-TEST B: verificar que sync_aplicar_estructura existe en v2.6
+--
+-- Si este test genera RAISE EXCEPTION (undefined_function), significa que la
+-- función no existe → retroceder a schema.sql y crearla.
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  BEGIN
+    -- Llamar con array vacío: la función debe retornar sin hacer nada (salvaguarda a)
+    PERFORM sync_aplicar_estructura('asig_r3_ceu_26', ARRAY[]::BIGINT[], TRUE);
+    RAISE NOTICE 'PRE-TEST B OK: sync_aplicar_estructura existe y acepta array vacío (salvaguarda a: no hace nada)';
+  EXCEPTION WHEN undefined_function THEN
+    RAISE EXCEPTION 'PRE-TEST B FALLÓ: sync_aplicar_estructura no existe — crearla en schema.sql';
+  END;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 23: sync_aplicar_estructura — 1 miss no marca ausente; 2 sí marcan
+--
+-- La función implementa las salvaguardas (a)/(b)/(c). Los tests anteriores
+-- a v2.6 hacían los UPDATEs directamente (tests circulares); estos tests
+-- llaman la función con entradas reales y verifican el resultado en BD.
+--
+-- Estrategia: incluir todos los cmids reales de asig_r3_ceu_26 en p_cmids
+-- para que solo el cmid de prueba (9901) sea el ausente.
+-- Los cmids reales (1001-1005): actividades 10-13 y 15 no se ven afectadas
+-- porque todas están "presentes" en p_cmids o son visible=FALSE.
 -- ─────────────────────────────────────────────────────────────────
 DO $$
 DECLARE
   v_ausente_en   TIMESTAMPTZ;
   v_consecutivas SMALLINT;
+  v_cmids_base   BIGINT[] := ARRAY[1001, 1002, 1003, 1004, 1005];
 BEGIN
-  -- Insertar actividad con ausencias_consecutivas=0
   INSERT INTO actividades_moodle
     (seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo,
      tiene_finalizacion, visible, publicada_en, ausencias_consecutivas)
   VALUES (1, 'asig_r3_ceu_26', 'tecno', 9901, 'resource', TRUE, TRUE, NOW(), 0);
 
-  -- Simular 1 miss (equivale a una respuesta vacía que pasó sin el guard)
-  UPDATE actividades_moodle
-  SET ausencias_consecutivas = ausencias_consecutivas + 1
-  WHERE asignacion_id = 'asig_r3_ceu_26' AND moodle_cmid = 9901 AND ausente_en IS NULL;
+  -- Primer miss: 9901 no está en v_cmids_base → incrementa su contador
+  PERFORM sync_aplicar_estructura('asig_r3_ceu_26', v_cmids_base, TRUE);
 
   SELECT ausente_en, ausencias_consecutivas
   INTO v_ausente_en, v_consecutivas
   FROM actividades_moodle WHERE moodle_cmid = 9901 AND asignacion_id = 'asig_r3_ceu_26';
 
   IF v_ausente_en IS NULL AND v_consecutivas = 1 THEN
-    RAISE NOTICE 'TEST 23 OK (a): 1 miss → ausencias_consecutivas=%, ausente_en IS NULL (no marcada)',
+    RAISE NOTICE 'TEST 23 OK (a): 1 miss → ausencias_consecutivas=%, ausente_en IS NULL (salvaguarda b: no marca aún)',
       v_consecutivas;
   ELSE
     RAISE EXCEPTION 'TEST 23 FALLÓ (a): ausente_en=%, consecutivas=% (esperados NULL y 1)',
       v_ausente_en, v_consecutivas;
   END IF;
 
-  -- 2do miss consecutivo → ahora sí se marca ausente_en
-  UPDATE actividades_moodle
-  SET ausencias_consecutivas = ausencias_consecutivas + 1
-  WHERE asignacion_id = 'asig_r3_ceu_26' AND moodle_cmid = 9901 AND ausente_en IS NULL;
-
-  UPDATE actividades_moodle
-  SET ausente_en = NOW()
-  WHERE asignacion_id = 'asig_r3_ceu_26' AND moodle_cmid = 9901
-    AND ausencias_consecutivas >= 2 AND ausente_en IS NULL;
+  -- Segundo miss consecutivo → contador llega a 2 → ausente_en se fija
+  PERFORM sync_aplicar_estructura('asig_r3_ceu_26', v_cmids_base, TRUE);
 
   SELECT ausente_en, ausencias_consecutivas
   INTO v_ausente_en, v_consecutivas
   FROM actividades_moodle WHERE moodle_cmid = 9901 AND asignacion_id = 'asig_r3_ceu_26';
 
   IF v_ausente_en IS NOT NULL AND v_consecutivas = 2 THEN
-    RAISE NOTICE 'TEST 23 OK (b): 2 misses consecutivos → ausente_en IS NOT NULL (marcada), consecutivas=%',
+    RAISE NOTICE 'TEST 23 OK (b): 2 misses → ausente_en IS NOT NULL, consecutivas=% (salvaguarda b: marcada)',
       v_consecutivas;
   ELSE
     RAISE EXCEPTION 'TEST 23 FALLÓ (b): ausente_en=%, consecutivas=% (esperados not-NULL y 2)',
@@ -807,31 +849,30 @@ BEGIN
 END $$;
 
 -- ─────────────────────────────────────────────────────────────────
--- TEST 24: reaparición de una actividad limpia ausente_en (salvaguarda c)
+-- TEST 24: reaparición con visible=TRUE limpia ausente_en (salvaguarda c)
+-- Actividad previamente ausente (consecutivas=2, ausente_en IS NOT NULL, visible=TRUE).
+-- Al incluir su cmid en p_cmids, la función resetea el contador y ausente_en.
 -- ─────────────────────────────────────────────────────────────────
 DO $$
 DECLARE
   v_ausente_en   TIMESTAMPTZ;
   v_consecutivas SMALLINT;
+  v_cmids_con_9902 BIGINT[] := ARRAY[1001, 1002, 1003, 1004, 1005, 9902];
 BEGIN
-  -- Actividad previamente marcada ausente (ausencias_consecutivas=2)
   INSERT INTO actividades_moodle
     (seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo,
      tiene_finalizacion, visible, publicada_en, ausente_en, ausencias_consecutivas)
-  VALUES (1, 'asig_r3_ceu_26', 'tecno', 9902, 'resource', TRUE, FALSE, NOW(), NOW(), 2);
+  VALUES (1, 'asig_r3_ceu_26', 'tecno', 9902, 'resource', TRUE, TRUE, NOW(), NOW(), 2);
 
-  -- Simular reaparición: actividad vuelve a estar en la respuesta del sync
-  UPDATE actividades_moodle
-  SET ausente_en = NULL, ausencias_consecutivas = 0
-  WHERE asignacion_id = 'asig_r3_ceu_26' AND moodle_cmid = 9902
-    AND (ausente_en IS NOT NULL OR ausencias_consecutivas > 0);
+  -- Reaparición: 9902 en la respuesta AND visible=TRUE → la función resetea
+  PERFORM sync_aplicar_estructura('asig_r3_ceu_26', v_cmids_con_9902, TRUE);
 
   SELECT ausente_en, ausencias_consecutivas
   INTO v_ausente_en, v_consecutivas
   FROM actividades_moodle WHERE moodle_cmid = 9902 AND asignacion_id = 'asig_r3_ceu_26';
 
   IF v_ausente_en IS NULL AND v_consecutivas = 0 THEN
-    RAISE NOTICE 'TEST 24 OK: reaparición limpia ausente_en=NULL y ausencias_consecutivas=0';
+    RAISE NOTICE 'TEST 24 OK: reaparición (visible=TRUE) → ausente_en=NULL, consecutivas=0 (salvaguarda c)';
   ELSE
     RAISE EXCEPTION 'TEST 24 FALLÓ: ausente_en=%, consecutivas=% (esperados NULL y 0)',
       v_ausente_en, v_consecutivas;
@@ -841,38 +882,36 @@ BEGIN
 END $$;
 
 -- ─────────────────────────────────────────────────────────────────
--- TEST 25: actividad oculta (visible=FALSE) presente en respuesta no se marca ausente
--- El criterio de ausente es: falta en la respuesta de core_course_get_contents.
--- Con el token correcto (que ve secciones ocultas), visible=FALSE no significa ausencia.
+-- TEST 25: actividad oculta (visible=FALSE) presente en respuesta NO se resetea
+--
+-- "Nunca se marca una actividad oculta como presente": si visible=FALSE en BD,
+-- la función no limpia ausencias_consecutivas ni ausente_en aunque el cmid
+-- esté en p_cmids. La actividad debe recuperarse primero haciéndose visible.
 -- ─────────────────────────────────────────────────────────────────
 DO $$
 DECLARE
   v_ausente_en   TIMESTAMPTZ;
   v_consecutivas SMALLINT;
+  v_cmids_con_9903 BIGINT[] := ARRAY[1001, 1002, 1003, 1004, 1005, 9903];
 BEGIN
-  -- Actividad oculta (visible=FALSE) con publicada_en IS NOT NULL
+  -- Actividad visible=FALSE, previamente marcada ausente (consecutivas=2)
   INSERT INTO actividades_moodle
     (seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo,
-     tiene_finalizacion, visible, publicada_en, ausencias_consecutivas)
-  VALUES (1, 'asig_r3_ceu_26', 'tecno', 9903, 'resource', TRUE, FALSE, NOW(), 0);
+     tiene_finalizacion, visible, publicada_en, ausente_en, ausencias_consecutivas)
+  VALUES (1, 'asig_r3_ceu_26', 'tecno', 9903, 'resource', TRUE, FALSE, NOW(), NOW(), 2);
 
-  -- Simular sync: actividad SÍ aparece en la respuesta (token ve ocultas).
-  -- La lógica de "presente": resetear contador si > 0 y limpiar ausente_en si estaba.
-  -- Actividad ya está limpia (contador=0, ausente_en IS NULL), así que el UPDATE
-  -- no modifica nada — correcto: visible=FALSE no incrementa el contador.
-  UPDATE actividades_moodle
-  SET ausencias_consecutivas = 0, ausente_en = NULL
-  WHERE asignacion_id = 'asig_r3_ceu_26' AND moodle_cmid = 9903
-    AND (ausencias_consecutivas > 0 OR ausente_en IS NOT NULL);
+  -- 9903 aparece en la respuesta pero visible=FALSE → la función NO resetea
+  PERFORM sync_aplicar_estructura('asig_r3_ceu_26', v_cmids_con_9903, TRUE);
 
   SELECT ausente_en, ausencias_consecutivas
   INTO v_ausente_en, v_consecutivas
   FROM actividades_moodle WHERE moodle_cmid = 9903 AND asignacion_id = 'asig_r3_ceu_26';
 
-  IF v_ausente_en IS NULL AND v_consecutivas = 0 THEN
-    RAISE NOTICE 'TEST 25 OK: actividad oculta (visible=FALSE) presente en respuesta → ausente_en=NULL, consecutivas=0';
+  IF v_ausente_en IS NOT NULL AND v_consecutivas = 2 THEN
+    RAISE NOTICE 'TEST 25 OK: visible=FALSE en respuesta → no reseteada (ausente_en IS NOT NULL, consecutivas=%)',
+      v_consecutivas;
   ELSE
-    RAISE EXCEPTION 'TEST 25 FALLÓ: ausente_en=%, consecutivas=% (esperados NULL y 0)',
+    RAISE EXCEPTION 'TEST 25 FALLÓ: ausente_en=%, consecutivas=% (esperados IS NOT NULL y 2; visible=FALSE no resetea)',
       v_ausente_en, v_consecutivas;
   END IF;
 
@@ -880,45 +919,40 @@ BEGIN
 END $$;
 
 -- ─────────────────────────────────────────────────────────────────
--- TEST 26: publicada_en en una actividad con completados se propaga a su sección
--- Cuando el sync detecta moodle_completado > 0 en una actividad con publicada_en IS NULL,
--- fija publicada_en = NOW() en la actividad y también en su sección si esta es NULL.
+-- TEST 26: sync_inicializar_publicada_en propaga publicada_en a actividad y sección
+--
+-- Al inicializar el sistema, una actividad con moodle_completado > 0 y
+-- publicada_en IS NULL recibe publicada_en = NOW(). La función también
+-- propaga a la sección si esta tiene publicada_en IS NULL.
 -- ─────────────────────────────────────────────────────────────────
 DO $$
 DECLARE
   v_act_pub  TIMESTAMPTZ;
   v_sec_pub  TIMESTAMPTZ;
-  v_sec_id   BIGINT := 9999;  -- ID explícito alto para evitar conflicto con secuencia BIGSERIAL (ids 1-4 ya usados)
+  v_sec_id   BIGINT;
   v_act_id   BIGINT;
 BEGIN
-  -- Insertar sección con publicada_en=NULL (docente no la ha publicado aún según el sync)
+  -- Sección con publicada_en=NULL
   INSERT INTO secciones_moodle
-    (id, asignacion_id, academia_id, moodle_section_id, numero_seccion, numero_unidad,
+    (asignacion_id, academia_id, moodle_section_id, numero_seccion, numero_unidad,
      titulo, visible, publicada_en)
-  VALUES (9999, 'asig_r3_ceu_26', 'tecno', 999, 99, 9, 'Sección prueba T26', FALSE, NULL);
+  VALUES ('asig_r3_ceu_26', 'tecno', 997, 97, 9, 'Sección prueba T26', FALSE, NULL)
+  RETURNING id INTO v_sec_id;
 
-  -- Insertar actividad en esa sección con publicada_en=NULL
+  -- Actividad en esa sección con publicada_en=NULL
   INSERT INTO actividades_moodle
     (seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo,
      tiene_finalizacion, visible, publicada_en)
   VALUES (v_sec_id, 'asig_r3_ceu_26', 'tecno', 9904, 'quiz', TRUE, FALSE, NULL)
   RETURNING id INTO v_act_id;
 
-  -- Insertar un progreso con moodle_completado=1 (evidencia de que la actividad estuvo visible)
+  -- Insertar progreso con moodle_completado=1 (evidencia de que la actividad estuvo visible)
   INSERT INTO progreso_actividades
     (matricula_id, actividad_id, asignacion_id, academia_id, moodle_completado)
   VALUES ('mat_ana', v_act_id, 'asig_r3_ceu_26', 'tecno', 1);
 
-  -- Simular la lógica de auto-inicialización del sync:
-  -- 1. Fijar publicada_en en la actividad por evidencia de completados
-  UPDATE actividades_moodle
-  SET publicada_en = NOW()
-  WHERE id = v_act_id AND publicada_en IS NULL;
-
-  -- 2. Propagar publicada_en a la sección si también es NULL
-  UPDATE secciones_moodle
-  SET publicada_en = NOW()
-  WHERE id = v_sec_id AND publicada_en IS NULL;
+  -- Llamar la función: propaga publicada_en por evidencia de completados
+  PERFORM sync_inicializar_publicada_en('asig_r3_ceu_26');
 
   SELECT a.publicada_en, s.publicada_en
   INTO v_act_pub, v_sec_pub
@@ -927,13 +961,13 @@ BEGIN
   WHERE a.id = v_act_id;
 
   IF v_act_pub IS NOT NULL AND v_sec_pub IS NOT NULL THEN
-    RAISE NOTICE 'TEST 26 OK: publicada_en propagada a actividad y sección al inicializar por completados';
+    RAISE NOTICE 'TEST 26 OK: sync_inicializar_publicada_en propagó publicada_en a actividad y sección';
   ELSE
     RAISE EXCEPTION 'TEST 26 FALLÓ: actividad.publicada_en=%, seccion.publicada_en=% (ambos deben ser NOT NULL)',
       v_act_pub, v_sec_pub;
   END IF;
 
-  -- Limpiar (ON DELETE CASCADE cubre progreso_actividades al borrar la actividad)
+  -- Limpieza (CASCADE borra progreso_actividades al eliminar la actividad)
   DELETE FROM actividades_moodle WHERE id = v_act_id;
   DELETE FROM secciones_moodle   WHERE id = v_sec_id;
 END $$;
@@ -1265,6 +1299,207 @@ ROLLBACK;
 
 
 -- ══════════════════════════════════════════════════════════════════
+-- PARTE 3b: PRUEBAS DE sync_worker (SET LOCAL ROLE sync_worker)
+--
+-- Verifica: (a) 0 filas sin academia; (b) solo ve la academia indicada;
+-- (c) las 5 operaciones del §3.4 funcionan; (d) password_enc y enc_iv
+-- denegados; (e) usuarios_app, sesiones, auditoria denegados.
+-- ══════════════════════════════════════════════════════════════════
+
+BEGIN;
+SET LOCAL ROLE sync_worker;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 27: 0 filas en todas las tablas de sync_worker sin academia
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v INT;
+  v_total INT := 0;
+BEGIN
+  PERFORM set_config('app.academia_ids', '', TRUE);
+
+  SELECT COUNT(*) INTO v FROM asignaciones_moodle;  v_total := v_total + v;
+  SELECT COUNT(*) INTO v FROM secciones_moodle;     v_total := v_total + v;
+  SELECT COUNT(*) INTO v FROM actividades_moodle;   v_total := v_total + v;
+  SELECT COUNT(*) INTO v FROM progreso_actividades; v_total := v_total + v;
+  SELECT COUNT(*) INTO v FROM grupos;               v_total := v_total + v;
+  SELECT COUNT(*) INTO v FROM sync_queue;           v_total := v_total + v;
+  SELECT COUNT(*) INTO v FROM moodle_sync_log;      v_total := v_total + v;
+
+  IF v_total = 0 THEN
+    RAISE NOTICE 'TEST 27 OK: sync_worker sin academia → 0 filas en las 7 tablas accesibles';
+  ELSE
+    RAISE EXCEPTION 'TEST 27 FALLÓ: academia vacía expone % fila(s)', v_total;
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 28: sync_worker con academia=tecno solo ve filas de tecno
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_secciones    INT;
+  v_actividades  INT;
+  v_matriculas   INT;
+  v_ajenas_sec   INT;
+BEGIN
+  PERFORM set_config('app.academia_ids', 'tecno', TRUE);
+
+  SELECT COUNT(*) INTO v_secciones   FROM secciones_moodle;
+  SELECT COUNT(*) INTO v_actividades FROM actividades_moodle;
+  -- matriculas: columnas autorizadas; seleccionar solo id y academia_id
+  SELECT COUNT(*) INTO v_matriculas  FROM matriculas;
+  SELECT COUNT(*) INTO v_ajenas_sec  FROM secciones_moodle WHERE academia_id != 'tecno';
+
+  IF v_ajenas_sec = 0 AND v_secciones > 0 THEN
+    RAISE NOTICE 'TEST 28 OK: sync_worker academia=tecno → % secciones, % actividades, % matrículas, 0 ajenas',
+      v_secciones, v_actividades, v_matriculas;
+  ELSE
+    RAISE EXCEPTION 'TEST 28 FALLÓ: secciones=%, actividades=%, ajenas=%',
+      v_secciones, v_actividades, v_ajenas_sec;
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 29: las 5 operaciones del §3.4 funcionan como sync_worker
+-- (a) UPDATE moodle_course_id en asignaciones_moodle
+-- (b) UPDATE moodle_user_id en matriculas
+-- (c) INSERT en secciones_moodle
+-- (d) INSERT en actividades_moodle
+-- (e) UPDATE en progreso_actividades
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_affected  INT;
+  v_sec_id    BIGINT;
+  v_act_id    BIGINT;
+BEGIN
+  PERFORM set_config('app.academia_ids', 'tecno', TRUE);
+
+  -- (a) UPDATE moodle_course_id en asignaciones_moodle
+  UPDATE asignaciones_moodle SET moodle_course_id = 8888 WHERE id = 'asig_r3_ceu_26';
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  IF v_affected = 1 THEN
+    RAISE NOTICE 'TEST 29a OK: sync_worker puede UPDATE moodle_course_id en asignaciones_moodle';
+  ELSE
+    RAISE EXCEPTION 'TEST 29a FALLÓ: UPDATE moodle_course_id afectó % filas (esperado 1)', v_affected;
+  END IF;
+
+  -- (b) UPDATE moodle_user_id en matriculas
+  UPDATE matriculas SET moodle_user_id = 77777 WHERE id = 'mat_ana';
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  IF v_affected = 1 THEN
+    RAISE NOTICE 'TEST 29b OK: sync_worker puede UPDATE moodle_user_id en matriculas';
+  ELSE
+    RAISE EXCEPTION 'TEST 29b FALLÓ: UPDATE moodle_user_id afectó % filas (esperado 1)', v_affected;
+  END IF;
+
+  -- (c) INSERT en secciones_moodle
+  INSERT INTO secciones_moodle
+    (asignacion_id, academia_id, moodle_section_id, numero_seccion, numero_unidad, titulo, visible)
+  VALUES ('asig_r3_ceu_26', 'tecno', 901, 90, 9, 'Sec test worker', TRUE)
+  RETURNING id INTO v_sec_id;
+  IF v_sec_id IS NOT NULL THEN
+    RAISE NOTICE 'TEST 29c OK: sync_worker puede INSERT en secciones_moodle (id=%)', v_sec_id;
+  ELSE
+    RAISE EXCEPTION 'TEST 29c FALLÓ: INSERT en secciones_moodle no retornó id';
+  END IF;
+
+  -- (d) INSERT en actividades_moodle (usando la sección recién insertada)
+  INSERT INTO actividades_moodle
+    (seccion_id, asignacion_id, academia_id, moodle_cmid, tipo_modulo, visible)
+  VALUES (v_sec_id, 'asig_r3_ceu_26', 'tecno', 8001, 'quiz', TRUE)
+  RETURNING id INTO v_act_id;
+  IF v_act_id IS NOT NULL THEN
+    RAISE NOTICE 'TEST 29d OK: sync_worker puede INSERT en actividades_moodle (id=%)', v_act_id;
+  ELSE
+    RAISE EXCEPTION 'TEST 29d FALLÓ: INSERT en actividades_moodle no retornó id';
+  END IF;
+
+  -- (e) UPDATE en progreso_actividades (fila existente de mat_ana, actividad 10)
+  UPDATE progreso_actividades
+  SET fecha_consulta = NOW()
+  WHERE matricula_id = 'mat_ana' AND actividad_id = 10;
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+  IF v_affected = 1 THEN
+    RAISE NOTICE 'TEST 29e OK: sync_worker puede UPDATE en progreso_actividades';
+  ELSE
+    RAISE EXCEPTION 'TEST 29e FALLÓ: UPDATE progreso_actividades afectó % filas (esperado 1)', v_affected;
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 30: password_enc denegado para sync_worker
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+DECLARE v_dummy TEXT;
+BEGIN
+  PERFORM set_config('app.academia_ids', 'tecno', TRUE);
+  BEGIN
+    SELECT password_enc INTO v_dummy FROM matriculas LIMIT 1;
+    RAISE EXCEPTION 'TEST 30 FALLÓ: sync_worker puede leer password_enc (no debe tener acceso)';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'TEST 30 OK: password_enc denegado para sync_worker';
+  END;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 31: enc_iv denegado para sync_worker
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+DECLARE v_dummy TEXT;
+BEGIN
+  PERFORM set_config('app.academia_ids', 'tecno', TRUE);
+  BEGIN
+    SELECT enc_iv INTO v_dummy FROM matriculas LIMIT 1;
+    RAISE EXCEPTION 'TEST 31 FALLÓ: sync_worker puede leer enc_iv (no debe tener acceso)';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'TEST 31 OK: enc_iv denegado para sync_worker';
+  END;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────
+-- TEST 32: usuarios_app, sesiones y auditoria denegados para sync_worker
+-- ─────────────────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_errores INT := 0;
+BEGIN
+  PERFORM set_config('app.academia_ids', 'tecno', TRUE);
+
+  BEGIN
+    PERFORM (SELECT id FROM usuarios_app LIMIT 1);
+    RAISE EXCEPTION 'TEST 32 FALLÓ: sync_worker puede leer usuarios_app';
+  EXCEPTION WHEN insufficient_privilege OR undefined_table THEN
+    v_errores := v_errores + 1;
+  END;
+
+  BEGIN
+    PERFORM (SELECT id FROM sesiones LIMIT 1);
+    RAISE EXCEPTION 'TEST 32 FALLÓ: sync_worker puede leer sesiones';
+  EXCEPTION WHEN insufficient_privilege OR undefined_table THEN
+    v_errores := v_errores + 1;
+  END;
+
+  BEGIN
+    PERFORM (SELECT id FROM auditoria LIMIT 1);
+    RAISE EXCEPTION 'TEST 32 FALLÓ: sync_worker puede leer auditoria';
+  EXCEPTION WHEN insufficient_privilege OR undefined_table THEN
+    v_errores := v_errores + 1;
+  END;
+
+  IF v_errores = 3 THEN
+    RAISE NOTICE 'TEST 32 OK: sync_worker no puede leer usuarios_app, sesiones ni auditoria (3 denegados)';
+  ELSE
+    RAISE EXCEPTION 'TEST 32 FALLÓ: solo % de 3 accesos fueron denegados', v_errores;
+  END IF;
+END $$;
+
+ROLLBACK;
+
+
+-- ══════════════════════════════════════════════════════════════════
 -- PARTE 4: LIMPIEZA (superusuario, orden inverso a FK)
 -- ══════════════════════════════════════════════════════════════════
 
@@ -1295,4 +1530,4 @@ DELETE FROM academias;
 COMMIT;
 
 -- Resumen: si en NOTICE aparece "OK" para cada test y no hay excepciones no capturadas,
--- el esquema cumple los invariantes de integridad y RLS de la v2.4.
+-- el esquema cumple los invariantes de integridad, RLS y sync de la v2.6.

@@ -1,5 +1,5 @@
 -- ══════════════════════════════════════════════════════════════════
--- ESQUEMA POSTGRESQL v2.5 — Sistema de control de estudio
+-- ESQUEMA POSTGRESQL v2.6 — Sistema de control de estudio
 -- Objetivo: PostgreSQL 15+
 -- Para probar localmente sin instalar PostgreSQL:
 --   docker run --rm --name pg_test \
@@ -210,6 +210,9 @@ CREATE TABLE secciones_moodle (
   -- Se marca ausente_en solo cuando llega a 2 (salvaguarda b).
   -- Se resetea a 0 cuando la sección reaparece en la respuesta (salvaguarda c).
   ausencias_consecutivas SMALLINT DEFAULT 0 NOT NULL,
+  -- Invariante: ausente_en solo puede ser NOT NULL cuando el contador ya llegó a 2.
+  -- Impide que sync_worker (o código directo) marque ausente sin pasar por el umbral.
+  CONSTRAINT chk_sec_ausente CHECK (ausente_en IS NULL OR ausencias_consecutivas >= 2),
   UNIQUE (asignacion_id, moodle_section_id),
   -- UNIQUE (id, academia_id) necesario para FK compuesta desde actividades_moodle
   UNIQUE (id, academia_id),
@@ -245,6 +248,9 @@ CREATE TABLE actividades_moodle (
   -- Se marca ausente_en solo cuando llega a 2 (salvaguarda b).
   -- Se resetea a 0 cuando la actividad reaparece en la respuesta (salvaguarda c).
   ausencias_consecutivas SMALLINT DEFAULT 0 NOT NULL,
+  -- Invariante: ausente_en solo puede ser NOT NULL cuando el contador ya llegó a 2.
+  -- Impide que sync_worker (o código directo) marque ausente sin pasar por el umbral.
+  CONSTRAINT chk_act_ausente CHECK (ausente_en IS NULL OR ausencias_consecutivas >= 2),
   UNIQUE (asignacion_id, moodle_cmid),
   -- UNIQUE (id, academia_id) y UNIQUE (id, asignacion_id): permiten FKs compuestas desde progreso
   UNIQUE (id, academia_id),
@@ -858,3 +864,234 @@ $$;
 
 REVOKE ALL    ON FUNCTION login_usuario(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION login_usuario(TEXT) TO app_user;
+
+-- ══════════════════════════════════════════════════════════════════
+-- ROL DEL WORKER DE SINCRONIZACIÓN (sync_worker)
+--
+-- Separación de la API (app_user): el worker accede a las tablas de
+-- estructura y progreso; nunca a password_enc, enc_iv, carnets,
+-- usuarios_app, sesiones ni auditoría.
+--
+-- La separación de academias la impone la RLS (igual que app_user),
+-- no los GRANTs de tabla. Cada trabajo se procesa con:
+--   BEGIN;
+--   SET LOCAL "app.academia_ids" = '<academia del trabajo>';
+--   -- operaciones del sync
+--   COMMIT;
+-- Sin SET LOCAL → current_setting devuelve NULL → 0 filas (fail-safe).
+-- ══════════════════════════════════════════════════════════════════
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'sync_worker') THEN
+    CREATE ROLE sync_worker NOLOGIN;
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA public TO sync_worker;
+
+-- Cola de trabajos: tomar, actualizar estado e insertar reagendamientos
+GRANT SELECT, INSERT, UPDATE ON sync_queue      TO sync_worker;
+GRANT USAGE, SELECT ON SEQUENCE sync_queue_id_seq TO sync_worker;
+
+-- Registro de sincronización: crear al iniciar, actualizar al terminar
+GRANT SELECT, INSERT, UPDATE ON moodle_sync_log TO sync_worker;
+GRANT USAGE, SELECT ON SEQUENCE moodle_sync_log_id_seq TO sync_worker;
+
+-- Estructura del curso: insertar y actualizar secciones y actividades
+GRANT SELECT, INSERT, UPDATE ON secciones_moodle  TO sync_worker;
+GRANT USAGE, SELECT ON SEQUENCE secciones_moodle_id_seq TO sync_worker;
+GRANT SELECT, INSERT, UPDATE ON actividades_moodle TO sync_worker;
+GRANT USAGE, SELECT ON SEQUENCE actividades_moodle_id_seq TO sync_worker;
+
+-- Progreso: insertar y actualizar estados de finalización por estudiante
+GRANT SELECT, INSERT, UPDATE ON progreso_actividades TO sync_worker;
+
+-- Asignaciones: leer datos del curso; actualizar solo moodle_course_id (§3.4 paso 0a)
+GRANT SELECT                  ON asignaciones_moodle TO sync_worker;
+GRANT UPDATE (moodle_course_id) ON asignaciones_moodle TO sync_worker;
+
+-- Grupos: leer y actualizar unidad actual automática (§3.4 paso 1f)
+GRANT SELECT                   ON grupos TO sync_worker;
+GRANT UPDATE (unidad_actual_auto) ON grupos TO sync_worker;
+
+-- Cursos modelo: solo lectura (para obtener nivel y datos del catálogo)
+GRANT SELECT ON cursos_modelo TO sync_worker;
+
+-- Matrículas: columnas autorizadas SIN password_enc NI enc_iv.
+-- UPDATE restringido a los campos que el sync escribe (§3.4 paso 0b y 1b).
+-- "consultado_en" del §3.4 corresponde a fecha_consulta_moodle en el esquema.
+GRANT SELECT (
+  id, academia_id, estudiante_id, asignacion_id, grupo_id,
+  username, enc_version, clave_obsoleta,
+  email, city, country, role1, enrolperiod1, suspended,
+  moodle_user_id, primer_acceso, ultimo_acceso,
+  ultimo_acceso_curso, fecha_consulta_moodle,
+  fecha_generacion, agregado_en, course1_legacy,
+  eliminado_en, lote_baja, tipo_papelera, orden, legacy_id
+) ON matriculas TO sync_worker;
+GRANT UPDATE (moodle_user_id, primer_acceso, ultimo_acceso,
+              ultimo_acceso_curso, fecha_consulta_moodle) ON matriculas TO sync_worker;
+
+-- sync_worker NO tiene acceso a:
+--   password_enc, enc_iv en matriculas
+--   usuarios_app, sesiones, intentos_login, auditoria
+--   colegios, estudiantes, roles_academia, permisos_usuario, asesores_colegios
+--   carnet_listas, carnet_estudiantes, carnet_opciones
+--   migracion_cuarentena
+
+-- ── Políticas RLS para sync_worker ───────────────────────────────
+-- Mismo patrón que app_user: la separación de academias la impone la RLS,
+-- no los GRANTs. El worker pone SET LOCAL app.academia_ids = '<academia>'
+-- antes de cada operación (una academia por transacción).
+
+CREATE POLICY pol_secciones_worker
+  ON secciones_moodle FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_actividades_worker
+  ON actividades_moodle FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_asignaciones_worker
+  ON asignaciones_moodle FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_matriculas_worker
+  ON matriculas FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_progreso_worker
+  ON progreso_actividades FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_grupos_worker
+  ON grupos FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_sync_log_worker
+  ON moodle_sync_log FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_sync_queue_worker
+  ON sync_queue FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+CREATE POLICY pol_cursos_worker
+  ON cursos_modelo FOR ALL TO sync_worker
+  USING (academia_id = ANY(string_to_array(current_setting('app.academia_ids', TRUE), ',')));
+
+-- ══════════════════════════════════════════════════════════════════
+-- FUNCIONES DEL WORKER DE SINCRONIZACIÓN
+-- ══════════════════════════════════════════════════════════════════
+
+-- ──────────────────────────────────────────────────────────────────
+-- sync_aplicar_estructura: implementa las tres salvaguardas de ausencias
+-- en actividades_moodle después de recibir core_course_get_contents.
+--
+-- Salvaguarda (a): si p_cmids está vacío o p_token_ok es FALSE → no hace
+--   nada. Una respuesta vacía puede ser error de red o falta de permisos
+--   del token; procesarla como "todo borrado" marcaría actividades que
+--   simplemente no se pudieron leer.
+-- Salvaguarda (b): incrementa ausencias_consecutivas por cada miss.
+--   ausente_en se fija solo cuando llega a 2.
+-- Salvaguarda (c): si un cmid reaparece en la respuesta Y la actividad
+--   tiene visible=TRUE → limpia ausencias_consecutivas y ausente_en.
+--   Si visible=FALSE, nunca se marca la actividad oculta como presente.
+--   (Recuperación: el docente vuelve a hacer visible la actividad; el
+--   próximo sync la ve con visible=TRUE y la función la reactiva.)
+--
+-- El CHECK (ausente_en IS NULL OR ausencias_consecutivas >= 2) en la tabla
+-- garantiza la consistencia incluso ante UPDATEs directos fuera de la función.
+--
+-- SECURITY INVOKER: RLS y GRANTs del llamante aplican.
+-- ──────────────────────────────────────────────────────────────────
+CREATE FUNCTION sync_aplicar_estructura(
+  p_asignacion TEXT,
+  p_cmids      BIGINT[],
+  p_token_ok   BOOLEAN
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  -- Salvaguarda (a)
+  IF p_token_ok IS NOT TRUE
+     OR p_cmids IS NULL
+     OR array_length(p_cmids, 1) IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- Salvaguarda (c): reaparición — resetear solo actividades visibles presentes en la respuesta
+  UPDATE actividades_moodle
+  SET ausencias_consecutivas = 0,
+      ausente_en = NULL
+  WHERE asignacion_id = p_asignacion
+    AND moodle_cmid = ANY(p_cmids)
+    AND visible = TRUE
+    AND (ausencias_consecutivas > 0 OR ausente_en IS NOT NULL);
+
+  -- Salvaguarda (b): incrementar contador para actividades ausentes de la respuesta
+  UPDATE actividades_moodle
+  SET ausencias_consecutivas = ausencias_consecutivas + 1
+  WHERE asignacion_id = p_asignacion
+    AND NOT (moodle_cmid = ANY(p_cmids))
+    AND ausente_en IS NULL;
+
+  -- Marcar ausente_en cuando el contador llega a 2 (el CHECK permite este UPDATE)
+  UPDATE actividades_moodle
+  SET ausente_en = NOW()
+  WHERE asignacion_id = p_asignacion
+    AND ausencias_consecutivas >= 2
+    AND ausente_en IS NULL;
+END;
+$$;
+
+-- ──────────────────────────────────────────────────────────────────
+-- sync_inicializar_publicada_en: fija publicada_en en actividades y
+-- secciones que tienen evidencia de completados pero publicada_en IS NULL.
+-- Aplica al lanzar el sistema por primera vez o al integrar datos históricos.
+--
+-- Regla: moodle_completado > 0 es evidencia de que la actividad estuvo
+-- visible alguna vez. La propagación sección ← actividad garantiza que
+-- la sección también quede marcada si algún hijo tiene publicada_en.
+--
+-- SECURITY INVOKER: RLS y GRANTs del llamante aplican.
+-- ──────────────────────────────────────────────────────────────────
+CREATE FUNCTION sync_inicializar_publicada_en(p_asignacion TEXT)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  -- 1. Fijar publicada_en en actividades con evidencia de completados
+  UPDATE actividades_moodle a
+  SET publicada_en = NOW()
+  WHERE a.asignacion_id = p_asignacion
+    AND a.publicada_en IS NULL
+    AND EXISTS (
+      SELECT 1 FROM progreso_actividades pa
+      WHERE pa.actividad_id = a.id
+        AND pa.moodle_completado > 0
+    );
+
+  -- 2. Propagar publicada_en a secciones con al menos una actividad publicada.
+  UPDATE secciones_moodle s
+  SET publicada_en = NOW()
+  WHERE s.asignacion_id = p_asignacion
+    AND s.publicada_en IS NULL
+    AND EXISTS (
+      SELECT 1 FROM actividades_moodle a
+      WHERE a.seccion_id = s.id
+        AND a.publicada_en IS NOT NULL
+    );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION sync_aplicar_estructura(TEXT, BIGINT[], BOOLEAN) FROM PUBLIC;
+REVOKE ALL ON FUNCTION sync_inicializar_publicada_en(TEXT)               FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION sync_aplicar_estructura(TEXT, BIGINT[], BOOLEAN) TO sync_worker;
+GRANT EXECUTE ON FUNCTION sync_inicializar_publicada_en(TEXT)               TO sync_worker;
