@@ -16,11 +16,10 @@ Nació como un **Organizador de Moodle**: una web estática (HTML+CSS+JS, sin bu
 
 ## 2. Estado actual (verificado 2026-10-22)
 
-- **Rama:** `main`. **Al día con `origin/main`** al inicio de la sesión del 2026-10-23 (`git fetch` + `git status -sb` → `## main...origin/main`, sin ahead/behind).
-- **Working tree con cambios sin commit** desde la sesión del 2026-10-23 (retiro de Firebase, Fase 3 — ver §15).
-- **Commit actual (HEAD antes de los cambios de la Fase 3):** `cb928be` — merge de `main` con `origin/main` (2026-10-14).
-- **Último commit de código de la app:** `cf9e028` "nuevos cambios" (2026-10-14) — edición de nombre conservando usuario + cambio de sufijo de colegio.
-- **Producción:** pendiente de deploy tras los cambios de la Fase 3. Firebase (Firestore + Auth) retirado del cliente; `.firebaserc` y el bloque `hosting` de `firebase.json` se conservan para seguir desplegando en Firebase Hosting hasta migrar al VPS.
+- **Rama:** `main`. **Al día con `origin/main`** (verificado 2026-10-23 al inicio de esta sesión: `git fetch` → sin cambios; `git status -sb` → `## main...origin/main`, working tree limpio).
+- **Commit actual (HEAD):** `7b635d2` — "Se elimino funciones de firebase dentro del organizador" (retiro de Firebase, Fase 3, pusheado desde Windows).
+- **Último commit de código de la app:** `7b635d2` (2026-10-23, misma sesión). Antes: `cf9e028` "nuevos cambios" (2026-10-14) — edición de nombre conservando usuario + cambio de sufijo de colegio.
+- **Producción:** pendiente de deploy (Firebase Hosting) tras los cambios de la Fase 3. `.firebaserc` y el bloque `hosting` de `firebase.json` se conservan para seguir desplegando en Firebase Hosting hasta migrar al VPS.
 - **Herramientas:** `node v24.19.0`, `npm 11.17.0`, `firebase-tools 15.32.1`, `git 2.55.0.windows.5`.
 
 **Si al empezar una tarea nueva `git status -sb` muestra que `main` está detrás de `origin/main`: detente y avisa.** El dueño trabaja desde dos equipos (Windows y un Chromebook); seguir sin avisar puede pisar trabajo hecho en el otro equipo.
@@ -264,7 +263,9 @@ Reconstruido desde `git log` (historial real, hashes verificados). Agrupado por 
 | 2026-10-14 | `cf9e028` | feat: editar nombre/apellido conservando usuario + cambiar sufijo de colegio (genérico, cualquier academia) | `script.js`, `test_cambiar_sufijo.js` (nuevo), `test_agregar_estudiantes.js` | `git revert cf9e028` |
 | 2026-10-14 | `cb928be` | merge: `main` con `origin/main` | — | no aplica (merge) |
 | 2026-10-22 | sin commit | docs: creación de `CLAUDE.md` + actualización de `nueva documentacion.md` | `CLAUDE.md` (nuevo), `nueva documentacion.md` | `git restore CLAUDE.md "nueva documentacion.md"` (antes de `git add`) |
-| **2026-10-23** | **sin commit** | **refactor: retiro completo de Firebase (Fase 3) — app 100% local** | `Organizador_moodle/index.html`, `script.js`, `styles.css`; eliminados `sync-firebase.js`, `firebase-config.js`, `lib/firebase-*-compat.min.js`, `firestore.rules`; editados `firebase.json`, `LEEME.txt`, `CLAUDE.md`, `nueva documentacion.md`, `database/MIGRACION_A_SERVIDOR_PROPIO.md` | `git revert <hash>` una vez commiteado |
+| 2026-10-23 | `bae980d` | cambios (incluye el commit de `CLAUDE.md` + `nueva documentacion.md` de la sesión anterior) | ver `git show bae980d` | `git revert bae980d` |
+| 2026-10-23 | `7b635d2` | refactor: retiro completo de Firebase (Fase 3) — app 100% local | `Organizador_moodle/index.html`, `script.js`, `styles.css`; eliminados `sync-firebase.js`, `firebase-config.js`, `lib/firebase-*-compat.min.js`, `firestore.rules`; editados `firebase.json`, `LEEME.txt`, `CLAUDE.md`, `nueva documentacion.md`, `database/MIGRACION_A_SERVIDOR_PROPIO.md` | `git revert 7b635d2` |
+| **2026-10-23** | **sin commit** | **docs: diseño de base de datos v2** | `docs/diseno_base_de_datos_v2.md` (nuevo), `CLAUDE.md` (§2 corregido) | `git restore docs/diseno_base_de_datos_v2.md CLAUDE.md` |
 
 ---
 
