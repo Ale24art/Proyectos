@@ -14,9 +14,11 @@ respaldo_*.json
 *.sqlite
 *.sqlite3
 
-# Volcados SQL con datos reales (el esquema sí se versiona: database/schema.sql)
+# Volcados SQL con datos reales (los esquemas de database/ sí se versionan)
 *.sql
 !database/schema.sql
+!database/postgres/schema.sql
+!database/postgres/tests/test_integridad.sql
 
 # Claves de cuentas de servicio de Firebase / Google Cloud
 *serviceAccount*.json
